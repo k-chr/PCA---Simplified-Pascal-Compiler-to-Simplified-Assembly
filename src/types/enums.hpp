@@ -1,12 +1,13 @@
 enum class scope 
 {
+	UNBOUND,
 	GLOBAL,
-	LOCAL,
-	UNBOUND
+	LOCAL
 };
 
 enum class dtype
 {
+	NONE,
 	INT,
 	REAL
 };
@@ -26,7 +27,7 @@ enum class entry
 #define YYTOKENTYPE
 enum class token
 {                
-	PROGRAM = 258,
+	PROGRAM,
     BEGIN,
     END,
     VAR,
@@ -47,6 +48,8 @@ enum class token
 	IN,
 	TO,
 	DOWNTO,
+	WRITE,
+	READ,
     RELOP,
     MULOP,
     SIGN,
@@ -62,8 +65,8 @@ enum class token
 
 enum class opcode
 {
-	PLS,     //OP:   add.t arg_1, arg_2, arg_to
-	MNS,     //OP:   sub.t arg_1, arg_2, arg_to
+	ADD,     //OP:   add.t arg_1, arg_2, arg_to
+	SUB,     //OP:   sub.t arg_1, arg_2, arg_to
 	MUL,     //OP:   mul.t arg_1, arg_2, arg_to
 	DIV,     //OP:   div.t arg_1, arg_2, arg_to
 	MOD,     //OP:   mod.i arg_1, arg_2, arg_to
@@ -79,11 +82,20 @@ enum class opcode
 	R2I,     //OP:   realtoint.i arg_to_cast, arg_to_store
 	MOV,     //OP:   mov.t arg_from, arg_to
 	JMP,     //OP:   jump arg
-	WRT,     //OP:   wrtie.t arg
+	WRT,     //OP:   write.t arg
+	RD,      //OP:   read.t arg
 	PSH,     //OP:   push.t arg
 	CALL,    //OP:   call arg
 	INCSP,   //OP:   incsp arg 
 	RET,     //OP:   return
 	LEAVE,   //OP:   leave
 	EXIT     //OP:   exit
+};
+
+enum class varsize
+{
+	NONE,
+	REF = 4,
+	INT = 4,
+	REAL = 8
 };
