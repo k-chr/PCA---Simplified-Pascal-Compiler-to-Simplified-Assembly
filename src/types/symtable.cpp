@@ -2,6 +2,26 @@
 #include <algorithm>
 #include <string>
 
+
+const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
+	{"*", 		opcode::MUL},
+	{"div", 	opcode::DIV},
+	{"/", 		opcode::DIV},
+	{"mod",		opcode::MOD},
+	{"+", 		opcode::ADD},
+	{"-", 		opcode::SUB},
+	{"and", 	opcode::AND},
+	{"or", 		 opcode::OR},
+	{"=", 		 opcode::EQ},
+	{"<>", 		 opcode::NE},
+	{">=", 		 opcode::GE},
+	{">", 		 opcode::GT},
+	{">", 		 opcode::GT},
+	{"<=", 		 opcode::LE},
+	{"<", 		 opcode::LT},
+	{":=",		opcode::MOV}
+};
+
 scope SymTable::scope() 
 {
 	return this->current_scope;
@@ -28,6 +48,22 @@ void SymTable::clear()
 	this->locals = 0;
 }
 
+int SymTable::insert(const enum scope& scope, const std::string& name, const entry& entry, const dtype& dtype, int address)
+{
+	int id = this->symbols.size();
+	Symbol s = {
+					.scope=scope,
+					.entry=entry,
+					.dtype=dtype,
+					.name=name,
+					.symtab_id=id,
+					.address=address
+			   };
+
+	this->symbols.push_back(s);
+	return id;
+}
+
 int SymTable::insert(const std::string& literal, const dtype& dtype)
 {
 	auto id = this->lookup(literal);
@@ -36,80 +72,72 @@ int SymTable::insert(const std::string& literal, const dtype& dtype)
 		return id;
 	}
 
-	id = this->symbols.size();
-
-	Symbol s = {	
-					.scope=this->scope(),
-					.entry=entry::NUM,
-					.dtype=dtype,
-					.token=token::NONE,
-					.name=literal,
-					.symtab_id=id
-				};
-
-	this->symbols.push_back(s);
-	return id;
+	return this->insert(this->scope(), literal, entry::NUM, dtype);
 }
 
 int SymTable::insert(const dtype& type)
 {
-	int id = this->symbols.size();
-	Symbol s = {
-					.scope=this->scope(),
-					.entry=entry::VAR,
-					.dtype=type,
-					.token=token::NONE,
-					.name= "$t" + std::to_string(this->locals++),
-					.symtab_id=id
-			   };
-
-	this->symbols.push_back(s);
-	return id;
+	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type);
 }
 
-int SymTable::insert(const std::string& name, const entry& entry, const token& token, const dtype& dtype)
+int SymTable::insert(const std::string& yytext, const token& op, const dtype dtype)
 {
-	int id = this->symbols.size();
-	Symbol s = {
-					.scope=this->scope(),
-					.entry=entry,
-					.dtype=dtype,
-					.token=token,
-					.name=name,
-					.symtab_id=id
-			   };
+	switch (op)
+	{
+        case token::RELOP:
+        case token::MULOP:
+        case token::SIGN:
+        case token::ASSIGN:
+        case token::OR:
+        case token::NOT:
+		{
+			auto id = this->lookup(yytext);
 
-	this->symbols.push_back(s);
-	return id;
+			if(id != SymTable::NONE)
+			{
+				return id;
+			}
+
+			auto it =SymTable::relops_mulops_signops.find(yytext);
+			if (it == SymTable::relops_mulops_signops.cend())
+			{
+				break;
+			}
+
+			const auto opcd = SymTable::relops_mulops_signops.at(yytext);
+			return this->insert(scope::GLOBAL, yytext, entry::OP, dtype::NONE, static_cast<int>(opcd));
+		}
+
+        case token::ID:
+			return this->insert(scope::UNBOUND, yytext, entry::NONE, dtype::NONE);
+
+        case token::NUM:
+			return this->insert(scope::UNBOUND, yytext, entry::NUM, dtype);
+			
+		default: break;
+    }
+    
+	return this->NONE;
 }
 
 int SymTable::insert(const std::string& label)
 {
-	int id = this->symbols.size();
 	if (this->labels.find(label) == this->labels.cend()){
 		this->labels[label] = 0;
 	}
 	auto name = label + std::to_string(this->labels[label]);
 	this->labels[label]++;
-
-	Symbol s = {
-					.scope=this->scope(),
-					.entry=entry::LABEL,
-					.dtype=dtype::NONE,
-					.token=token::NONE,
-					.name=name,
-					.symtab_id = id
-			   };
-
-	this->symbols.push_back(s);
-	return id;
+	return this->insert(this->scope(), name, entry::LABEL, dtype::NONE);
 }
 
 int SymTable::lookup(const std::string& name)
 {
 	const auto it =std::find_if(this->symbols.cbegin(), this->symbols.cend(), [&name, this](const Symbol& s){
 		return s.name == name and (
-			s.entry == entry::FUNC or s.entry == entry::PROC or s.scope == this->scope()
+			s.entry == entry::FUNC or 
+			s.entry == entry::PROC or 
+			s.entry == entry::OP or 
+			s.scope == this->scope()
 		);
 	});
 
@@ -136,7 +164,11 @@ void SymTable::create_checkpoint()
 void SymTable::restore_checkpoint()
 {	
 	int sz = this->symbols.size();
-	if (this->checkpoint != sz) this->symbols.resize(this->checkpoint);
+	if (this->checkpoint != sz)
+	{
+		this->symbols.resize(this->checkpoint);
+		this->locals = 0;
+	}
 }
 
 int SymTable::get_last_addr()

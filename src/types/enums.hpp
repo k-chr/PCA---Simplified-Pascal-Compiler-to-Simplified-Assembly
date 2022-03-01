@@ -20,12 +20,13 @@ enum class entry
 	VAR,
 	NUM,
 	ARR,
+	OP,
 	LABEL
 };
 
 #ifndef YYTOKENTYPE
 #define YYTOKENTYPE
-enum class token
+enum token
 {                
 	PROGRAM,
     BEGIN,
@@ -62,6 +63,8 @@ enum class token
     DONE
 };
 #endif
+
+
 
 enum class opcode
 {
