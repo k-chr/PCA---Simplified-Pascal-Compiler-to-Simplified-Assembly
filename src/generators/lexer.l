@@ -3,7 +3,6 @@
 %option noyywrap
 %{
     #include "global.hpp"
-
 %}
 /* keywords definitions */
 program 	"program"
@@ -50,101 +49,107 @@ other		.
 				++lineno;
 			}
 {program}	{
-				return {.token_val=token::PROGRAM};
+				return token::PROGRAM;
 			}	
 {var}		{
-				return {.token_val=token::VAR};
+				return token::VAR;
 			}
 {array}		{
-				return {.token_val=token::ARRAY};
+				return token::ARRAY;
 			}
 {of}		{
-				return {.token_val=token::OF};
+				return token::OF;
 			}
 {integer}	{
-				return {.token_val=token::INTEGER};
+				return token::INTEGER;
 			}
 {real}		{
-				return {.token_val=token::REAL};
+				return token::REAL;
 			}
 {function}	{
-				return {.token_val=token::FUN};
+				return token::FUN;
 			}
 {procedure}	{
-				return {.token_val=token::PROC};
+				return token::PROC;
 			}
 {begin}		{
-				return {.token_val=token::BEGIN};
+				return token::BEGIN;
 			}
 {end}		{
-				return {.token_val=token::END};
+				return token::END;
 			}
 {if} 		{
-				return {.token_val=token::IF};
+				return token::IF;
 			}	
 {then}		{
-				return {.token_val=token::THEN};
+				return token::THEN;
 			}
 {else}		{
-				return {.token_val=token::ELSE};
+				return token::ELSE;
 			}
 {while}		{
-				return {.token_val=token::WHILE};
+				return token::WHILE;
 			}
 {do} 		{
-				return {.token_val=token::DO};
+				return token::DO;
 			}	
 {repeat}	{
-				return {.token_val=token::REPEAT};
+				return token::REPEAT;
 			}
 {until}		{
-				return {.token_val=token::UNTIL};
+				return token::UNTIL;
 			}
 {for}		{
-				return {.token_val=token::FOR};
+				return token::FOR;
 			}
 {to} 		{
-				return {.token_val=token::TO};
+				return token::TO;
 			}
 {downto}	{
-				return {.token_val=token::DOWNTO};
+				return token::DOWNTO;
 			}
 {in}  		{
-				return {.token_val=token::IN};
+				return token::IN;
 			}
 {not}		{
-				return {.token_val=token::NOT};
+				return token::NOT;
 			}
 {mulop}		{
-				return {.token_val=token::MULOP, .int_val=};
+				yylval = sym_tab_ptr->insert(yytext, token::MULOP);
+				return token::MULOP;
 			}
-{sign}		
-{or} 			
-{relop}
-{assign}
+{sign}		{
+				yylval = sym_tab_ptr->insert(yytext, token::SIGN);
+				return token::SIGN;
+			}
+{or} 		{
+				yylval = sym_tab_ptr->insert(yytext, token::OR);
+				return token::OR;
+			}	
+{relop}		{
+				yylval = sym_tab_ptr->insert(yytext, token::RELOP);
+				return token::RELOP;
+			}
+{assign}	{
+				yylval = sym_tab_ptr->insert(yytext, token::ASSIGN);
+				return token::ASSIGN;
+			}
 {id}		{
-				if(yyleng >= BSIZE) error("Exceeded maximum identifier length");
-				int idx = lookup(yytext);
-				if (idx == 0)
-					idx = insert(yytext, ID);
-				tokenval = idx;
-				return symtable[idx].token;
+				yylval = sym_tab_ptr->insert(yytext, token::ID);
+				return token::ID;
 			}
 {digits}	{
-				tokenval = atoi(yytext);
-				return NUM;
+				yylval = sym_tab_ptr->insert(yytext, token::NUM, dtype::INT);
+				return token::NUM;
 			}
 {floating}	{
-
+				yylval = sym_tab_ptr->insert(yytext, token::NUM, dtype::REAL);
+				return token::NUM;
 			}
 <<EOF>>	    {
-				return DONE;
+				return token::DONE;
 			}	
 {other}		{
 				return *yytext;
 			}
 %%
-int lexan()
-{
-	return yylex();
-}

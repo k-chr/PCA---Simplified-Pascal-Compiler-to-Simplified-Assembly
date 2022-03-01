@@ -113,7 +113,7 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
 
         case token::NUM:
 			return this->insert(scope::UNBOUND, yytext, entry::NUM, dtype);
-			
+
 		default: break;
     }
     
@@ -122,7 +122,8 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
 
 int SymTable::insert(const std::string& label)
 {
-	if (this->labels.find(label) == this->labels.cend()){
+	if (this->labels.find(label) == this->labels.cend())
+	{
 		this->labels[label] = 0;
 	}
 	auto name = label + std::to_string(this->labels[label]);
@@ -132,7 +133,8 @@ int SymTable::insert(const std::string& label)
 
 int SymTable::lookup(const std::string& name)
 {
-	const auto it =std::find_if(this->symbols.cbegin(), this->symbols.cend(), [&name, this](const Symbol& s){
+	const auto it =std::find_if(this->symbols.cbegin(), this->symbols.cend(), [&name, this](const Symbol& s)
+	{
 		return s.name == name and (
 			s.entry == entry::FUNC or 
 			s.entry == entry::PROC or 
@@ -173,7 +175,8 @@ void SymTable::restore_checkpoint()
 
 int SymTable::get_last_addr()
 {
-	const auto it_to_last_sized = std::find_if(this->symbols.crbegin(), this->symbols.crend(), [](const Symbol& s){
+	const auto it_to_last_sized = std::find_if(this->symbols.crbegin(), this->symbols.crend(), [](const Symbol& s)
+	{
 		return s.entry == entry::VAR or s.entry == entry::ARR;
 	});
 

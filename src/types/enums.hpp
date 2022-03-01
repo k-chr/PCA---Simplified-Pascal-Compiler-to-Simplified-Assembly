@@ -28,7 +28,7 @@ enum class entry
 #define YYTOKENTYPE
 enum token
 {                
-	PROGRAM,
+	PROGRA=258,
     BEGIN,
     END,
     VAR,
