@@ -7,7 +7,6 @@ struct Symbol
 	scope scope;
 	entry entry;
 	dtype dtype;
-	token token;
 	std::string name;
 	bool is_reference;
 	int symtab_id;
