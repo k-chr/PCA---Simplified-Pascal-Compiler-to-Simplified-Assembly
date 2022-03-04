@@ -2,45 +2,46 @@
 
 %option noyywrap
 %{
-    #include "global.hpp"
+	#include "global.hpp"
 %}
-/* keywords definitions */
-program 	"program"
-var 		"var"
-array 		"array"
-of 			"of"
+/* keywords and operators definitions */
+program		"program"
+var			"var"
+array		"array"
+of			"of"
 integer		"integer"
 real		"real"
 function	"function"
 procedure	"procedure"
 begin		"begin"
 end			"end"
-if 			"if"
+if			"if"
 then		"then"
 else		"else"
 while		"while"
-do 			"do"
+do			"do"
 repeat		"repeat"
 until		"until"
 for			"for"
-to 			"to"
+to			"to"
 downto		"downto"
-in  		"in"
+in			"in"
 not			"not"
-mulop		"*"|"/"|"div"|"mod"|"and"
+mulop		"*"|"/"|"div"|"mod"
+and 		"and"
 sign		"-"|"+"
-or 			"or"
+or			"or"
 relop		"<>"|"<="|">="|"<"|">"|"="
 assign		":="
 /* regex definitions */
-space	    [ \t]
-newline     [\n]
-blank	    {space}+
-digit	    [0-9]
+space		[ \t]
+newline		[\n]
+blank		{space}+
+digit		[0-9]
 digits		{digit}+
 floating	{digits}(\.{digits}?)([eE][+-]?{digits})?
-alpha	    [a-zA-Z]
-id		    {alpha}({alpha}|{digit})*
+alpha		[a-zA-Z]
+id			{alpha}({alpha}|{digit})*
 other		.
 
 %%
@@ -73,14 +74,14 @@ other		.
 				return token::PROC;
 			}
 {begin}		{
-				return token::BEGIN;
+				return token::BEGIN_TOK;
 			}
 {end}		{
 				return token::END;
 			}
-{if} 		{
+{if}		{
 				return token::IF;
-			}	
+			}
 {then}		{
 				return token::THEN;
 			}
@@ -90,9 +91,9 @@ other		.
 {while}		{
 				return token::WHILE;
 			}
-{do} 		{
+{do}		{
 				return token::DO;
-			}	
+			}
 {repeat}	{
 				return token::REPEAT;
 			}
@@ -102,53 +103,57 @@ other		.
 {for}		{
 				return token::FOR;
 			}
-{to} 		{
+{to}		{
 				return token::TO;
 			}
 {downto}	{
 				return token::DOWNTO;
 			}
-{in}  		{
+{in}		{
 				return token::IN;
 			}
 {not}		{
 				return token::NOT;
 			}
 {mulop}		{
-				yylval = sym_tab_ptr->insert(yytext, token::MULOP);
+				*yylval = sym_tab_ptr->insert(yytext, token::MULOP);
 				return token::MULOP;
 			}
 {sign}		{
-				yylval = sym_tab_ptr->insert(yytext, token::SIGN);
+				*yylval = sym_tab_ptr->insert(yytext, token::SIGN);
 				return token::SIGN;
 			}
-{or} 		{
-				yylval = sym_tab_ptr->insert(yytext, token::OR);
+{or}		{
+				*yylval = sym_tab_ptr->insert(yytext, token::OR);
 				return token::OR;
-			}	
+			}
+{and}		{
+				*yylval = sym_tab_ptr->insert(yytext, token::AND);
+				return token::AND;
+			}
 {relop}		{
-				yylval = sym_tab_ptr->insert(yytext, token::RELOP);
+				*yylval = sym_tab_ptr->insert(yytext, token::RELOP);
 				return token::RELOP;
 			}
 {assign}	{
-				yylval = sym_tab_ptr->insert(yytext, token::ASSIGN);
+				*yylval = sym_tab_ptr->insert(yytext, token::ASSIGN);
 				return token::ASSIGN;
 			}
 {id}		{
-				yylval = sym_tab_ptr->insert(yytext, token::ID);
+				*yylval = sym_tab_ptr->insert(yytext, token::ID);
 				return token::ID;
 			}
 {digits}	{
-				yylval = sym_tab_ptr->insert(yytext, token::NUM, dtype::INT);
+				*yylval = sym_tab_ptr->insert(yytext, token::NUM, dtype::INT);
 				return token::NUM;
 			}
 {floating}	{
-				yylval = sym_tab_ptr->insert(yytext, token::NUM, dtype::REAL);
+				*yylval = sym_tab_ptr->insert(yytext, token::NUM, dtype::REAL);
 				return token::NUM;
 			}
-<<EOF>>	    {
+<<EOF>>		{
 				return token::DONE;
-			}	
+			}
 {other}		{
 				return *yytext;
 			}

@@ -28,8 +28,8 @@ enum class entry
 #define YYTOKENTYPE
 enum token
 {                
-	PROGRA=258,
-    BEGIN,
+	PROGRAM=258,
+    BEGIN_TOK,
     END,
     VAR,
     INTEGER,
@@ -55,6 +55,7 @@ enum token
     MULOP,
     SIGN,
     ASSIGN,
+	AND,
     OR,
     NOT,
     ID,

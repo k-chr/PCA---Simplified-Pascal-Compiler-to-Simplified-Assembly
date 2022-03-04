@@ -22,6 +22,37 @@ const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
 	{":=",		opcode::MOV}
 };
 
+const std::map<token, std::string> SymTable::keywords = {
+	{token::PROGRAM,  "program"},
+	{token::BEGIN_TOK, 	"begin"},
+	{token::END,		  "end"},
+	{token::VAR, 		  "var"},
+	{token::INTEGER,  "integer"},
+	{token::REAL,		 "real"},
+	{token::ARRAY, 		"array"},
+	{token::OF, 		   "of"},
+	{token::FUN, 	 "function"},
+	{token::PROC, 	"procedure"},
+	{token::IF, 		   "if"},
+	{token::THEN, 		 "then"},
+	{token::ELSE, 		 "else"},
+	{token::DO,			   "do"},
+	{token::WHILE, 		"while"},
+	{token::REPEAT,	   "repeat"},
+	{token::UNTIL, 		"until"},
+	{token::FOR, 		  "for"},
+	{token::IN, 		   "in"},
+	{token::TO, 		   "to"},
+	{token::DOWNTO,    "downto"},
+	{token::WRITE,		"write"},
+	{token::READ,		 "read"}
+};
+
+std::string SymTable::keyword(const token token)
+{
+	return SymTable::keywords.at(token);
+}
+
 scope SymTable::scope() 
 {
 	return this->current_scope;
@@ -89,6 +120,7 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
         case token::SIGN:
         case token::ASSIGN:
         case token::OR:
+		case token::AND:
         case token::NOT:
 		{
 			auto id = this->lookup(yytext);

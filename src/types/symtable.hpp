@@ -1,4 +1,5 @@
 #include "symbol.hpp"
+#include <string>
 #include <vector>
 #include <map>
 
@@ -11,8 +12,10 @@ class SymTable
 		int locals = 0;
 		scope current_scope = scope::GLOBAL;
 		const static std::map<std::string, opcode> relops_mulops_signops;
+		const static std::map<token, std::string> keywords;
 
 	public:
+		std::string keyword(const token);
 		Symbol& get(const int);
 		int get_last_addr();
 		int insert(const scope&, const std::string&, const entry&,  const dtype&, int = SymTable::NONE);
