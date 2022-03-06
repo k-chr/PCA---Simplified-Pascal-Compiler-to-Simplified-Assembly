@@ -69,6 +69,7 @@ enum token
 
 enum class opcode
 {
+	NOP,
 	ADD,     //OP:   add.t arg_1, arg_2, arg_to
 	SUB,     //OP:   sub.t arg_1, arg_2, arg_to
 	MUL,     //OP:   mul.t arg_1, arg_2, arg_to

@@ -107,20 +107,31 @@ int Emitter::binary_op(int op_id, int operand1, int operand2)
 int Emitter::cast(int id, dtype & to)
 {
 	auto& sym = this->symtab_ptr->get(id);
+
+	if (sym.dtype == to) return id;
+
+	opcode op = opcode::NOP;
 	switch (to) 
 	{
         case dtype::INT:
 		{	
-
+			op = opcode::R2I;
 			break;
 		}
         case dtype::REAL:
 		{
-			
+			op = opcode::I2R;
+			break;
 		}
         case dtype::NONE:
           break;
     }
+
+	auto return_id = this->symtab_ptr->insert(to);
+
+	
+
+	return return_id;
 }
 
 const std::ostream& Emitter::get_stream()

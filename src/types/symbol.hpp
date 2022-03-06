@@ -15,6 +15,26 @@ struct Symbol
 	int stop_ind;
 	std::vector<Symbol> args;
 	
+	std::string type_to_str()
+	{
+		std::string res = "None";
+		switch (this->dtype) 
+		{
+			case dtype::INT:
+			{
+				res = "integer";
+				break;
+			}
+			case dtype::REAL: 
+			{
+				res = "real";
+				break;
+			}
+            case dtype::NONE:break;
+        }
+		return res;
+    }
+
 	int size() const
 	{
 		int aux = 0;
