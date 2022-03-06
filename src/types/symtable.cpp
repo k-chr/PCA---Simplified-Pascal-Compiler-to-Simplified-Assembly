@@ -113,6 +113,13 @@ int SymTable::insert(const dtype& type)
 
 int SymTable::insert(const std::string& yytext, const token& op, const dtype dtype)
 {
+	auto id = this->lookup(yytext);
+
+	if(id != SymTable::NONE)
+	{
+		return id;
+	}
+
 	switch (op)
 	{
         case token::RELOP:
@@ -123,13 +130,6 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
 		case token::AND:
         case token::NOT:
 		{
-			auto id = this->lookup(yytext);
-
-			if(id != SymTable::NONE)
-			{
-				return id;
-			}
-
 			auto it =SymTable::relops_mulops_signops.find(yytext);
 			if (it == SymTable::relops_mulops_signops.cend())
 			{
