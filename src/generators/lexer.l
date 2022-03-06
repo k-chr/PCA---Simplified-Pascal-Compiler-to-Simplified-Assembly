@@ -41,7 +41,7 @@ digit		[0-9]
 digits		{digit}+
 floating	{digits}(\.{digits}?)([eE][+-]?{digits})?
 alpha		[a-zA-Z]
-id			{alpha}({alpha}|{digit})*
+id			({alpha}|[_])({alpha}|{digit}|[_])*
 other		.
 
 %%
