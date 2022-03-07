@@ -66,16 +66,6 @@ void Emitter::make_call(int proc_or_fun, const std::vector<int> &args)
 
 }
 
-void Emitter::read(std::vector<int> &identifiers)
-{
-
-}
-
-void Emitter::write(std::vector<int> &identifiers)
-{
-
-}
-
 void Emitter::jump_if(int op, int comp, int comp1, int if_true)
 {
 
@@ -134,7 +124,7 @@ int Emitter::cast(int id, dtype & to)
 	return return_id;
 }
 
-const std::ostream& Emitter::get_stream()
+std::ostream& Emitter::get_stream()
 {
 	return this->symtab_ptr->scope() == scope::GLOBAL ? this->output : this->mem;
 }

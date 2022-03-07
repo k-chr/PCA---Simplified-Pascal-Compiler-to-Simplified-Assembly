@@ -1,8 +1,10 @@
 #include "symtable.hpp"
 #include "compilerexception.hpp"
 #include "utils.hpp"
+#include <ios>
 #include <map>
 #include <ostream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -14,12 +16,12 @@ class Emitter
 	private:
 		const static std::map<opcode, std::string> mnemonics;
 		const std::shared_ptr<SymTable> symtab_ptr;
-		const std::ostream &output;
-		const std::stringstream mem;
+		std::ostream &output;
+		std::stringstream mem;
 		std::string get_type_str(const dtype&);
 
 	public:
-		Emitter(const std::ostream &output, 
+		Emitter(std::ostream &output, 
 				const std::shared_ptr<SymTable> table): symtab_ptr(table), output(output) {};
 
 		int binary_op(int, int, int);
@@ -33,9 +35,13 @@ class Emitter
 		void write(int symbol_id, const S&... symbol_ids)
 		{
 			auto& symbol = this->symtab_ptr->get(symbol_id);
+			auto& mnemonic = this->mnemonics.at(opcode::WRT);
+
+
 			switch (symbol.entry)
 			{		
                 case entry::VAR:
+
 					break;
                 case entry::NUM:
 					break;
@@ -78,7 +84,43 @@ class Emitter
 		}
 
 		int cast(int, dtype&);
-		void emit_to_stream(const std::string& strings);
-		const std::ostream& get_stream();
+
+		template<typename... Str, typename=std::enable_if_t<std::conjunction_v<std::is_same<std::string, Str>...>>>
+		void emit_to_stream(const std::string& label, const std::string& op, const std::string& comment, const Str&... mnemonics)
+		{
+			auto& stream = this->get_stream();
+
+  			stream << std::endl << std::setw(8) << std::left;
+
+  			const auto& print = [&stream](const std::string& item)
+			{
+     			stream << std::setw(12) << item << ", ";
+  			};
+
+  			stream << label<< std::setw(16);
+  			stream << op << std::setw(0) << std::right;
+  			(print(mnemonics), ...);
+
+			if(stream.rdbuf() == std::cout.rdbuf())
+			{
+				stream << '\b' << '\b';
+			}
+			else 
+			{
+				stream.seekp(-2, std::ios_base::end);
+			}
+
+			if(not comment.empty())
+			{
+				stream << std::setw(16) << "\t" << std::left;
+				stream << comment << std::setw(0);
+			}
+			else
+			{
+				stream << std::setw(0) << std::left;
+			}
+		}
+
+		std::ostream& get_stream();
 };
 
