@@ -58,10 +58,23 @@ scope SymTable::scope()
 	return this->current_scope;
 }
 
+local_scope SymTable::local_scope()
+{
+	return this->scope() == scope::GLOBAL ? local_scope::UNBOUND : this->current_local_scope;
+}
+
 void SymTable::leave_global_scope()
 {
 	if (this->current_scope == scope::GLOBAL)
 		this->current_scope = scope::LOCAL;
+}
+
+void SymTable::set_local_scope(enum local_scope& value)
+{
+	if(this->scope() == scope::LOCAL)
+	{
+		this->current_local_scope = value;
+	}
 }
 
 void SymTable::return_to_global_scope()
@@ -79,7 +92,7 @@ void SymTable::clear()
 	this->locals = 0;
 }
 
-int SymTable::insert(const enum scope& scope, const std::string& name, const entry& entry, const dtype& dtype, int address)
+int SymTable::insert(const enum scope& scope, const std::string& name, const entry& entry, const dtype& dtype, int address, bool is_reference, int start, int stop)
 {
 	int id = this->symbols.size();
 	Symbol s = {
@@ -87,8 +100,11 @@ int SymTable::insert(const enum scope& scope, const std::string& name, const ent
 					.entry=entry,
 					.dtype=dtype,
 					.name=name,
+					.is_reference = is_reference,
 					.symtab_id=id,
-					.address=address
+					.address=address,
+					.start_ind = start,
+					.stop_ind = stop
 			   };
 
 	this->symbols.push_back(s);
@@ -106,9 +122,37 @@ int SymTable::insert(const std::string& literal, const dtype& dtype)
 	return this->insert(this->scope(), literal, entry::NUM, dtype);
 }
 
-int SymTable::insert(const dtype& type)
+int SymTable::insert(const dtype& type, bool is_reference)
 {
-	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type);
+	auto address = this->get_last_addr();
+	if (this->scope() == scope::LOCAL)
+	{
+		auto offset = 0;
+		if (is_reference) 
+		{
+			offset = static_cast<int>(varsize::REF);
+		}
+		else 
+		{
+			switch (type) 
+			{
+				case dtype::INT:
+				{
+					offset = static_cast<int>(varsize::INT);
+					break;
+				}
+				case dtype::REAL:
+				{
+					offset = static_cast<int>(varsize::REAL);
+					break;
+				}
+            	case dtype::NONE:break;
+            }
+        }
+		address -= offset;
+	}
+
+	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type, address, is_reference);
 }
 
 int SymTable::insert(const std::string& yytext, const token& op, const dtype dtype)
@@ -161,6 +205,20 @@ int SymTable::insert(const std::string& label)
 	auto name = label + std::to_string(this->labels[label]);
 	this->labels[label]++;
 	return this->insert(this->scope(), name, entry::LABEL, dtype::NONE);
+}
+
+int SymTable::insert(const std::string& name, int start, int end)
+{
+	auto id = this->lookup(name);
+
+	if(id != SymTable::NONE)
+	{
+		return id;
+	}
+
+	auto op = (start <= end ? opcode::ADD : opcode::SUB);
+
+	return this->insert(this->scope(), name, entry::RNG, dtype::INT, static_cast<int>(op), false, start, end);
 }
 
 int SymTable::lookup(const std::string& name)
@@ -220,7 +278,7 @@ int SymTable::get_last_addr()
 		{
 			addr = it_to_last_sized->address + it_to_last_sized->size();
 		}
-		else if (it_to_last_sized->scope == scope::LOCAL)
+		else if (it_to_last_sized->scope == scope::LOCAL and it_to_last_sized->address < 0)
 		{
 			addr = it_to_last_sized->address - it_to_last_sized->size();
 		}

@@ -11,6 +11,7 @@ class SymTable
 		int checkpoint = 0;
 		int locals = 0;
 		scope current_scope = scope::GLOBAL;
+		local_scope current_local_scope = local_scope::UNBOUND;
 		const static std::map<std::string, opcode> relops_mulops_signops;
 		const static std::map<token, std::string> keywords;
 
@@ -18,15 +19,19 @@ class SymTable
 		std::string keyword(const token);
 		Symbol& get(const int);
 		int get_last_addr();
-		int insert(const scope&, const std::string&, const entry&,  const dtype&, int = SymTable::NONE);
-		int insert(const dtype&);
-		int insert(const std::string&, const dtype&);
-		int insert(const std::string&);
-		int insert(const std::string&, const token&, const dtype= dtype::NONE);
+		int insert(const scope&, const std::string&, const entry&,  const dtype&, int = SymTable::NONE, bool is_reference=false, int start=0, int stop=0); //general function
+		int insert(const dtype&, bool is_reference =false); //temporary
+		int insert(const std::string&, const dtype&); //constant
+		int insert(const std::string&); //label
+		int insert(const std::string&, const token&, const dtype= dtype::NONE); //identifier, constant or operator
+		int insert(const std::string&, int, int); //range object
 		int lookup(const std::string&);
+
 		void clear();
 
 		scope scope();
+		local_scope local_scope();
+		void set_local_scope(enum local_scope&);
 		void return_to_global_scope();
 		void leave_global_scope();
 

@@ -5,6 +5,13 @@ enum class scope
 	LOCAL
 };
 
+enum class local_scope
+{
+	UNBOUND,
+	FUN,
+	PROC
+};
+
 enum class dtype
 {
 	NONE,
@@ -20,6 +27,7 @@ enum class entry
 	VAR,
 	NUM,
 	ARR,
+	RNG,
 	OP,
 	LABEL
 };
