@@ -1,6 +1,7 @@
 #include "symtable.hpp"
 #include "compilerexception.hpp"
 #include "utils.hpp"
+#include <algorithm>
 #include <cmath>
 #include <ios>
 #include <map>
@@ -9,6 +10,9 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <optional>
+#include <stack>
+
 
 extern int lineno;
 
@@ -19,11 +23,26 @@ class Emitter
 		const std::shared_ptr<SymTable> symtab_ptr;
 		std::ostream &output;
 		std::stringstream mem;
+		std::stringstream temp_mem;
 		std::string get_type_str(const dtype&);
+		void push(Symbol&);
+		void check_arrays(Symbol&, Symbol&);
 		int cast(Symbol&, dtype&);
-		int mulop(Symbol&, Symbol&, Symbol&);
+		int negate(Symbol&);
+		int boolean_negate(Symbol&);
+		int binop(Symbol&, Symbol&, Symbol&);
 		int relop(Symbol&, Symbol&, Symbol&);
 		int andorop(Symbol&, Symbol&, Symbol&);
+		int begin_left_eval_or_and(opcode, int);
+		int left_eval_and_or(int, int, bool or_op=false);
+		void read(int);
+		void write(int);
+		void incsp(int);
+		void assign(Symbol&, Symbol&);
+		void label(Symbol&);
+		void jump(Symbol&);
+		std::stack<std::vector<int>> params_stack;
+		std::vector<int> params;
 
 	public:
 		Emitter(std::ostream &output, 
@@ -31,76 +50,45 @@ class Emitter
 
 		int binary_op(int, int, int);
 		int unary_op(int, int);
+		int begin_or_else(int);
+		int begin_and_then(int);
 		int and_then(int, int);
 		int or_else(int, int);
-		int get_item(int, int);
+		int get_item(int);
+		int variable_or_call(int);
+		std::vector<int> get_params();
+		void begin_parametric_expr();
+		void end_parametric_expr();
+		void store_param(int); 
 		void jump(int);
 		void assign(int, int);
-		void make_call(int, const std::vector<int>&);
+		std::optional<int> make_call(int, bool result_required=false);
 		void end_program();
 		void label(int);
 
-		template<typename... S, typename=std::enable_if_t<std::conjunction_v<std::is_same<int, S>...>>>
-		void write(int symbol_id, const S&... symbol_ids)
+		void write()
 		{
-			auto& symbol = this->symtab_ptr->get(symbol_id);
-			auto& mnemonic = this->mnemonics.at(opcode::WRT);
-			
-			switch (symbol.entry)
-			{		
-                case entry::VAR:
-                case entry::NUM:
-				{
-					std::string op = mnemonic + this->get_type_str(symbol.dtype);
-					this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, symbol.name), symbol.addr_to_str(true));
-					break;
-				}
-				
-                case entry::ARR:
-					throw CompilerException("No matching overload of write procedure for Array type", lineno);
-				case entry::RNG:
-					throw CompilerException(interpolate("Syntax error, expected constant or variable identifier, got a range object: {0}..{1}", symbol.start_ind, symbol.stop_ind), lineno);
-                case entry::OP:
-					throw CompilerException(interpolate("Syntax error, expected constant or variable identifier, got an operator: {0}", symbol.name), lineno);
-                case entry::NONE:
-                case entry::FUNC:
-                case entry::PROC:
-                case entry::LABEL:
-                	throw CompilerException("Unknown error", lineno);
-            }
-
-			(write(symbol_ids), ...);
+			auto data = this->params;
+			if(data.empty()) throw CompilerException(interpolate("Syntax erorr. Write procedure expects at least one argument."), lineno);
+			std::for_each(data.cbegin(), data.cend(), [this](auto symbol_id){this->write(symbol_id);});
 		}
 
 		template<typename... S, typename=std::enable_if_t<std::conjunction_v<std::is_same<int, S>...>>>
-		void read(int symbol_id, const S&... symbol_ids)
+		void write(const S&... symbol_ids)
 		{
-			auto& symbol = this->symtab_ptr->get(symbol_id);
-			auto& mnemonic = this->mnemonics.at(opcode::RD);
+			(write(symbol_ids), ...);
+		}
 
-			switch (symbol.entry)
-			{		
-                case entry::VAR:
-				{
-					std::string op = mnemonic + this->get_type_str(symbol.dtype);
-					this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, symbol.name), symbol.addr_to_str(true));
-					break;
-				}
-                case entry::NUM:
-					throw CompilerException(interpolate("Syntax error, expected variable identifier, got an constant: {0}, of {1}", symbol.name, symbol.type_to_str()), lineno);
-                case entry::ARR:
-					throw CompilerException("No matching overload of read procedure for Array type", lineno);
-				case entry::RNG:
-					throw CompilerException(interpolate("Syntax error, expected variable identifier, got a range object: {0}..{1}", symbol.start_ind, symbol.stop_ind), lineno);
-                case entry::OP:
-					throw CompilerException(interpolate("Syntax error, expected variable identifier, got an operator: {0}", symbol.name), lineno);
-                case entry::NONE:
-                case entry::FUNC:
-                case entry::PROC:
-                case entry::LABEL:
-                	throw CompilerException("Unknown error", lineno);
-            }
+		void read()
+		{
+			auto data = this->params;
+			if(data.empty()) throw CompilerException(interpolate("Syntax erorr. Read procedure expects at least one argument."), lineno);
+			std::for_each(data.cbegin(), data.cend(), [this](auto symbol_id){this->read(symbol_id);});
+		}
 
+		template<typename... S, typename=std::enable_if_t<std::conjunction_v<std::is_same<int, S>...>>>
+		void read(const S&... symbol_ids)
+		{
 			(read(symbol_ids), ...);
 		}
 
