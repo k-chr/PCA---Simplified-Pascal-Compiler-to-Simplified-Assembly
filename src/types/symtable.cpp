@@ -1,5 +1,6 @@
 #include "symtable.hpp"
 #include <algorithm>
+#include <memory>
 #include <string>
 
 
@@ -19,7 +20,8 @@ const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
 	{">", 		 opcode::GT},
 	{"<=", 		 opcode::LE},
 	{"<", 		 opcode::LT},
-	{":=",		opcode::MOV}
+	{":=",		opcode::MOV},
+	{"not",		opcode::NOT}
 };
 
 const std::map<token, std::string> SymTable::keywords = {
@@ -155,6 +157,45 @@ int SymTable::insert(const dtype& type, bool is_reference)
 	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type, address, is_reference);
 }
 
+void SymTable::update_var(int id, int type_id)
+{
+	auto& symbol = this->get(id);
+
+	if(symbol.scope != scope::UNBOUND)
+	{
+		yyerror(("Syntax error. Redefinition of variable: " + symbol.name + " at line: " + std::to_string(lineno)).c_str());
+	}
+
+	auto addr = this->get_last_addr();
+	
+	symbol.scope = this->scope();
+	symbol.address = addr;
+
+	auto none_type = static_cast<int>(dtype::NONE);
+
+	if (type_id >= none_type)
+	{
+		type_id -= none_type;
+		auto arr_type = this->get(type_id);
+
+		if (arr_type.entry != entry::ARR)
+		{
+			yyerror(("Unknown error, expected ARR entry not: " + std::to_string((int)arr_type.entry) + " at line: " + std::to_string(lineno)).c_str());
+		}
+
+		symbol.dtype = arr_type.dtype;
+		symbol.args = arr_type.args;
+		symbol.entry = arr_type.entry;
+		symbol.start_ind = arr_type.start_ind;
+		symbol.stop_ind = arr_type.stop_ind;
+	}
+	else
+	{
+		symbol.entry = entry::VAR;
+		symbol.dtype = dtype(type_id);
+	}
+}
+
 int SymTable::insert(const std::string& yytext, const token& op, const dtype dtype)
 {
 	auto id = this->lookup(yytext);
@@ -173,7 +214,7 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
         case token::OR:
 		case token::AND:
         case token::NOT:
-		{
+		{	
 			auto it =SymTable::relops_mulops_signops.find(yytext);
 			if (it == SymTable::relops_mulops_signops.cend())
 			{
@@ -202,19 +243,32 @@ int SymTable::insert(const std::string& label)
 	{
 		this->labels[label] = 0;
 	}
+
 	auto name = label + std::to_string(this->labels[label]);
 	this->labels[label]++;
 	return this->insert(this->scope(), name, entry::LABEL, dtype::NONE);
 }
 
-int SymTable::insert(const std::string& name, int start, int end)
+int SymTable::insert(int start, int end)
 {
+	auto start_sym = this->get(start);
+	auto end_sym = this->get(end);
+
+	if(start_sym.dtype == dtype::REAL or end_sym.dtype == dtype::REAL)
+	{
+		yyerror(("Range bound types are not (integer, integer) but got: (" + start_sym.type_to_str() + ", " + end_sym.type_to_str() + "), at line: " + std::to_string(lineno)).c_str());
+	}
+
+	auto name = "range(" + start_sym.name + ", " + end_sym.name + ")";
 	auto id = this->lookup(name);
 
 	if(id != SymTable::NONE)
 	{
 		return id;
 	}
+
+	start = std::atoi(start_sym.name.c_str());
+	end = std::atoi(end_sym.name.c_str());
 
 	auto op = (start <= end ? opcode::ADD : opcode::SUB);
 
@@ -227,6 +281,7 @@ int SymTable::lookup(const std::string& name)
 	{
 		return s.name == name and (
 			s.entry == entry::FUNC or 
+			s.entry == entry::RNG or 
 			s.entry == entry::PROC or 
 			s.entry == entry::OP or 
 			s.scope == this->scope()
