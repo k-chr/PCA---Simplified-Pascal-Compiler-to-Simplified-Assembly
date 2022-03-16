@@ -37,7 +37,6 @@ struct Symbol
 
 	int size() const
 	{
-		int aux = 0;
 		int elems = 1;
 		auto size = varsize::NONE;
 		if (this->entry == entry::VAR or this->entry == entry::ARR)
@@ -53,18 +52,16 @@ struct Symbol
 				};
 				if (this->entry == entry::ARR)
 				{
-					aux = static_cast<int>(varsize::INT) * this->args.size() * 2;
 					for (const auto& dim : this->args)
 					{
 						int len = std::abs(dim.stop_ind - dim.start_ind);
 						elems *= len;
 					}
-
 				}
 			}
 		}
 
-		return static_cast<int>(size) * elems + aux;
+		return static_cast<int>(size) * elems;
 	}
 
 	std::string addr_to_str(bool dereference=false)
