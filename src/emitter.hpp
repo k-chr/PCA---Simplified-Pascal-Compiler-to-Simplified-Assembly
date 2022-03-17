@@ -1,6 +1,4 @@
 #include "symtable.hpp"
-#include "compilerexception.hpp"
-#include "utils.hpp"
 #include <algorithm>
 #include <cmath>
 #include <ios>
@@ -25,6 +23,9 @@ class Emitter
 		std::stringstream mem;
 		std::stringstream temp_mem;
 		std::string get_type_str(const dtype&);
+		std::stack<std::vector<int>> params_stack;
+		std::vector<int> params;
+
 		void push(Symbol&);
 		void check_arrays(Symbol&, Symbol&);
 		int cast(Symbol&, dtype&);
@@ -41,12 +42,23 @@ class Emitter
 		void assign(Symbol&, Symbol&);
 		void label(Symbol&);
 		void jump(Symbol&);
-		std::stack<std::vector<int>> params_stack;
-		std::vector<int> params;
+		void enter(int);
+
+		void leave_subprogram();
+		void commit_subprogram();
 
 	public:
 		Emitter(std::ostream &output, 
 				const std::shared_ptr<SymTable> table): symtab_ptr(table), output(output) {};
+
+		std::vector<int> get_params();
+		void clear_params();
+		void begin_parametric_expr();
+		void end_parametric_expr();
+		void store_param(int);
+		void store_param_on_stack(int);
+
+		void end_current_subprogram();
 
 		int binary_op(int, int, int);
 		int unary_op(int, int);
@@ -56,15 +68,14 @@ class Emitter
 		int or_else(int, int);
 		int get_item(int);
 		int variable_or_call(int);
-		std::vector<int> get_params();
-		void begin_parametric_expr();
-		void end_parametric_expr();
-		void store_param(int); 
 		void jump(int);
 		void assign(int, int);
 		std::optional<int> make_call(int, bool result_required=false);
+		void call_program(int);
+		void start_program(int);
 		void end_program();
 		void label(int);
+		int cast(int, dtype&);
 
 		void write()
 		{
@@ -91,8 +102,6 @@ class Emitter
 		{
 			(read(symbol_ids), ...);
 		}
-
-		int cast(int, dtype&);
 
 		template<typename... Str, typename=std::enable_if_t<std::conjunction_v<std::is_same<std::string, Str>...>>>
 		void emit_to_stream(const std::string& label, const std::string& op, const std::string& comment, const Str&... mnemonics)

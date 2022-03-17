@@ -1,17 +1,15 @@
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
 #include <iostream>
 
-inline std::string stringify(std::string const& val)
-{
-	return (val);
-}
-
-template<typename N, typename=std::enable_if_t<false == std::is_convertible<N, std::string>::value, std::string>>
+template<typename N>
 std::string stringify(N const& val)
 {
-	return std::to_string(val);
+	std::stringstream ss;
+	ss << val;
+	return ss.str();
 }
 
 template <typename S, typename... Args>

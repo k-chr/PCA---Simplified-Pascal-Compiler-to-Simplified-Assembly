@@ -2,6 +2,7 @@
 	#include "global.hpp"
 	#include <exception>
 	#include <iostream>
+	#include <algorithm>
 
 	void yyerror(std::exception& exc);
 	void yyerror(const char* message);
@@ -24,15 +25,18 @@ UNTIL FOR IN TO DOWNTO WRITE READ RELOP MULOP SIGN ASSIGN AND OR NOT ID NUM NONE
 %%
 
 program:
-	PROGRAM ID '(' program_args ')' ';' variable_decl subprogram_decl
+	PROGRAM ID '(' program_args ')' ';' variable_decl
 	{
-
+		emitter_ptr->call_program($2);
+		symtab_ptr->leave_global_scope();
+		symtab_ptr->create_checkpoint();
+	} subprogram_decl
+	{
+		symtab_ptr->return_to_global_scope();
+		emitter_ptr->start_program($2);
 	}
 	block
 	'.'
-	{
-
-	}
 	eof
 	;
 
@@ -44,7 +48,10 @@ program_args:
 variable_decl:
 	variable_decl VAR identifiers ':' type ';'
 	{
-
+		auto data = emitter_ptr->get_params();
+		auto computed_type = $5;
+		std::for_each(data.crbegin(), data.crend(), [symtab_ptr, computed_type](auto symbol_id){symtab_ptr->update_var(symbol_id, computed_type);});
+		emitter_ptr->clear_params();
 	}
 	| %empty
 	;
@@ -68,7 +75,7 @@ subprogram_decl:
 subprogram:
 	header variable_decl block
 	{
-
+		emitter_ptr->end_current_subprogram();
 	}
 	;
 
@@ -79,7 +86,9 @@ header:
 	}
 	arguments
 	{
-
+		auto data = emitter_ptr->get_params();
+		
+		emitter_ptr->end_parametric_expr();
 	}
 	':' type
 	{
@@ -91,8 +100,10 @@ header:
 
 	}
 	arguments
-	{
-		
+	{	
+		auto data = emitter_ptr->get_params();
+
+		emitter_ptr->end_parametric_expr();
 	}
 	';'
 	;
@@ -258,7 +269,14 @@ expression:
 	}
 	| simple_expression RELOP simple_expression
 	{
-		$$ = emitter_ptr->binary_op($2, $1, $3);
+		try
+		{
+			$$ = emitter_ptr->binary_op($2, $1, $3);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	;
 
@@ -266,22 +284,57 @@ simple_expression:
 	term
 	| SIGN simple_expression
 	{
-		$$ = emitter_ptr->unary_op($1, $2);
+		try
+		{
+			$$ = emitter_ptr->unary_op($1, $2);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	| simple_expression SIGN simple_expression
 	{
-		$$ = emitter_ptr->binary_op($2, $1, $3);
+		try
+		{
+			$$ = emitter_ptr->binary_op($2, $1, $3);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	| simple_expression or_else 
 	{
-		$2 = emitter_ptr->begin_or_else($1);
+		try
+		{
+			$2 = emitter_ptr->begin_or_else($1);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	} simple_expression
 	{
-		$$ = emitter_ptr->or_else($2, $3)
+		try
+		{
+			$$ = emitter_ptr->or_else($2, $3)
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	| simple_expression OR simple_expression
 	{
-		$$ = emitter_ptr->binary_op($2, $1, $3);
+		try
+		{
+			$$ = emitter_ptr->binary_op($2, $1, $3);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	;
 
@@ -289,14 +342,35 @@ term:
 	factor
 	| term and_then
 	{
-		$2 = emitter_ptr->begin_and_then($1);
+		try
+		{
+			$2 = emitter_ptr->begin_and_then($1);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	} term
 	{
-		$$ = emitter_ptr->and_then($2, $3)
+		try
+		{
+			$$ = emitter_ptr->and_then($2, $3)
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	| term mulop term
-	{		
-		$$ = emitter_ptr->binary_op($2, $1, $3);
+	{	
+		try
+		{
+			$$ = emitter_ptr->binary_op($2, $1, $3);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}	
 	}
 	;
 
@@ -307,15 +381,29 @@ factor:
 		emitter_ptr->begin_parametric_expr();	
 	} expression_list ')'
 	{
-		auto optional_result = emitter_ptr->make_call($1, true);
-		$$ = optional_result->get();
+		try
+		{
+			auto optional_result = emitter_ptr->make_call($1, true);
+			$$ = optional_result->get();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 		emitter->end_parametric_expr();
 	}
 	| NUM
 	| '(' expression ')'
 	| NOT factor
 	{
-		$$ = emitter_ptr->unary_op($1, $2);
+		try
+		{
+			$$ = emitter_ptr->unary_op($1, $2);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	;
 
@@ -328,7 +416,16 @@ variable:
 	ID
 	{
 		emitter_ptr->begin_parametric_expr();
-		$$ = emitter_ptr->variable_or_call($1);
+
+		try
+		{
+			$$ = emitter_ptr->variable_or_call($1);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+
 		emitter_ptr->end_parametric_expr();
 	}
 	| ID '[' 
@@ -336,7 +433,15 @@ variable:
 		emitter_ptr->begin_parametric_expr();
 	} dim_exprs
 	{
-		$$ = emitter_ptr->get_item($1);
+		try
+		{
+			$$ = emitter_ptr->get_item($1);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+
 		emitter_ptr->end_parametric_expr();
 	}
 	;
@@ -372,7 +477,14 @@ comma_expr:
 	;
 
 arguments:
-	'(' optional_args ')'
+	'(' 
+	{
+		emitter_ptr->begin_parametric_expr();
+		emitter_ptr->begin_parametric_expr();
+	} optional_args ')'
+	{
+		emitter_ptr->end_parametric_expr();
+	}
 	| %empty
 	;
 
@@ -383,20 +495,29 @@ optional_args:
 
 args_decl:
 	args_decl ';' arg_decl
-	{
-		
-	}
 	| arg_decl
 	;
 
 arg_decl:
 	VAR identifiers ':' type
 	{
-
+		auto data = emitter_ptr->get_params();
+		auto computed_type = $3;
+		std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
+			symtab_ptr->update_var(symbol_id, computed_type, true);
+			emitter_ptr->store_param_on_stack(symbol_id);
+		});
+		emitter_ptr->clear_params();
 	}
 	| identifiers ':' type
 	{
-
+		auto data = emitter_ptr->get_params();
+		auto computed_type = $3;
+		std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
+			symtab_ptr->update_var(symbol_id, computed_type);
+			emitter_ptr->store_param_on_stack(symbol_id);
+		});
+		emitter_ptr->clear_params();
 	}
 	;
 
@@ -425,7 +546,7 @@ dims:
 range:
 	NUM '.' '.' NUM
 	{
-		$$ = symtab_ptr->insert($1, $4);
+		$$ = symtab_ptr->insert_range($1, $4);
 	}
 	;
 
@@ -440,7 +561,7 @@ type:
 	primitives
 	| ARRAY array_decl OF primitives
 	{
-		$$ = symtab_ptr->insert(emitter_ptr->get_params(), dtype($4))
+		$$ = symtab_ptr->insert_array_type(emitter_ptr->get_params(), dtype($4))
 		emitter_ptr->end_parametric_expr();
 	}
 	;
@@ -461,6 +582,7 @@ mulop:
 eof:
 	DONE
 	{
+		emitter_ptr->end_program();
 		return 0;
 	}
 	;

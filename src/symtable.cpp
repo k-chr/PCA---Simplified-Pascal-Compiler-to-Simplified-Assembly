@@ -1,8 +1,11 @@
 #include "symtable.hpp"
 #include <algorithm>
+#include <ios>
+#include <iterator>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <string>
-
 
 const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
 	{"*", 		opcode::MUL},
@@ -113,7 +116,7 @@ int SymTable::insert(const enum scope& scope, const std::string& name, const ent
 	return id;
 }
 
-int SymTable::insert(const std::string& literal, const dtype& dtype)
+int SymTable::insert_constant(const std::string& literal, const dtype& dtype)
 {
 	auto id = this->lookup(literal);
 	if(id != SymTable::NONE)
@@ -124,7 +127,7 @@ int SymTable::insert(const std::string& literal, const dtype& dtype)
 	return this->insert(this->scope(), literal, entry::NUM, dtype);
 }
 
-int SymTable::insert(const dtype& type, bool is_reference)
+int SymTable::insert_temp(const dtype& type, bool is_reference)
 {
 	auto address = this->get_last_addr();
 	if (this->scope() == scope::LOCAL)
@@ -157,20 +160,20 @@ int SymTable::insert(const dtype& type, bool is_reference)
 	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type, address, is_reference);
 }
 
-void SymTable::update_var(int id, int type_id)
+void SymTable::update_var(int id, int type_id, bool is_reference)
 {
 	auto& symbol = this->get(id);
 
 	if(symbol.scope != scope::UNBOUND)
 	{
-		yyerror(("Syntax error. Redefinition of variable: " + symbol.name + " at line: " + std::to_string(lineno)).c_str());
+		throw CompilerException(interpolate("Syntax error. Redefinition of variable: {0}", symbol.name), lineno);
 	}
 
 	auto addr = this->get_last_addr();
 	
 	symbol.scope = this->scope();
 	symbol.address = addr;
-
+	symbol.is_reference = is_reference;
 	auto none_type = static_cast<int>(dtype::NONE);
 
 	if (type_id >= none_type)
@@ -178,14 +181,14 @@ void SymTable::update_var(int id, int type_id)
 		type_id -= none_type;
 		auto arr_type = this->get(type_id);
 
-		if (arr_type.entry != entry::ARR)
+		if (arr_type.entry != entry::TYPE)
 		{
-			yyerror(("Unknown error, expected ARR entry not: " + std::to_string((int)arr_type.entry) + " at line: " + std::to_string(lineno)).c_str());
+			throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", arr_type.entry), lineno);
 		}
 
 		symbol.dtype = arr_type.dtype;
 		symbol.args = arr_type.args;
-		symbol.entry = arr_type.entry;
+		symbol.entry = static_cast<entry>(arr_type.address);
 		symbol.start_ind = arr_type.start_ind;
 		symbol.stop_ind = arr_type.stop_ind;
 	}
@@ -196,7 +199,7 @@ void SymTable::update_var(int id, int type_id)
 	}
 }
 
-int SymTable::insert(const std::string& yytext, const token& op, const dtype dtype)
+int SymTable::insert_by_token(const std::string& yytext, const token& op, const dtype dtype)
 {
 	auto id = this->lookup(yytext);
 
@@ -229,7 +232,7 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
 			return this->insert(scope::UNBOUND, yytext, entry::NONE, dtype::NONE);
 
         case token::NUM:
-			return this->insert(scope::UNBOUND, yytext, entry::NUM, dtype);
+			return this->insert_constant(yytext, dtype);
 
 		default: break;
     }
@@ -237,7 +240,7 @@ int SymTable::insert(const std::string& yytext, const token& op, const dtype dty
 	return this->NONE;
 }
 
-int SymTable::insert(const std::string& label)
+int SymTable::insert_label(const std::string& label)
 {
 	if (this->labels.find(label) == this->labels.cend())
 	{
@@ -249,14 +252,14 @@ int SymTable::insert(const std::string& label)
 	return this->insert(this->scope(), name, entry::LABEL, dtype::NONE);
 }
 
-int SymTable::insert(int start, int end)
+int SymTable::insert_range(int start, int end)
 {
 	auto start_sym = this->get(start);
 	auto end_sym = this->get(end);
 
 	if(start_sym.dtype == dtype::REAL or end_sym.dtype == dtype::REAL)
 	{
-		yyerror(("Range bound types are not (integer, integer) but got: (" + start_sym.type_to_str() + ", " + end_sym.type_to_str() + "), at line: " + std::to_string(lineno)).c_str());
+		throw CompilerException(interpolate("Syntax error. Range bound types are not (integer, integer) but got: ({0}, {1})", start_sym.type_to_str(), end_sym.type_to_str()), lineno);
 	}
 
 	auto name = "range(" + start_sym.name + ", " + end_sym.name + ")";
@@ -273,6 +276,59 @@ int SymTable::insert(int start, int end)
 	auto op = (start <= end ? opcode::ADD : opcode::SUB);
 
 	return this->insert(this->scope(), name, entry::RNG, dtype::INT, static_cast<int>(op), false, start, end);
+}
+
+int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
+{
+	std::stringstream ss("array [");
+
+	std::vector<Symbol> symbols_vec;
+
+	std::transform(dims.crbegin(), dims.crend(), std::inserter(symbols_vec, symbols_vec.begin()), [this](int id)
+	{
+		return this->get(id);
+	});
+
+	if(std::any_of(symbols_vec.cbegin(), symbols_vec.cend(), [](const auto& symbol)
+	{
+		return symbol.entry != entry::RNG or static_cast<opcode>(symbol.address) != opcode::ADD;
+	}))
+	{
+		throw CompilerException("Syntax error. Expected ascending range in array definition.", lineno);
+	}
+
+	int sum = 0;
+	std::for_each(symbols.cbegin(), symbols.cend(), [&ss, this, &sum](const auto& symbol)
+	{
+		ss << symbol.start_ind;
+		ss << "..";
+		ss << symbol.stop_ind;
+		ss << ", ";
+
+		sum += std::abs(symbol.stop_ind-symbol.start_ind);
+	});
+
+	ss.seekp(-2, std::ios_base::cur);
+
+	ss << "]";
+
+	ss << " of " << (type == dtype::INT ? "integer" : "real");
+	
+	auto name = ss.str();
+
+	if (int out_id = this->lookup(name); out_id != SymTable::NONE)
+	{
+		return out_id;
+	}
+
+	auto id = this->insert(this->scope(), name, entry::TYPE, type, static_cast<int>(entry::ARR), false);
+	auto& symbol = this->get(id);
+
+	symbol.args = symbols_vec;
+	symbol.start_ind = 0;
+	symbol.stop_ind = sum; 
+
+	return symbol.symtab_id;
 }
 
 int SymTable::lookup(const std::string& name)
@@ -340,4 +396,28 @@ int SymTable::get_last_addr()
 	}
 
 	return addr;
+}
+
+std::ostream& operator<<(std::ostream& out, const SymTable& symtab)
+{
+	out << std::endl;
+	
+	out << std::setfill('_') << std::setw(135) << "" << std::endl << std::setfill(' ');
+	out << std::setw(10) << "scope" << "|" 
+		<< std::setw(30) << "name" << "|" 
+		<< std::setw(10) << "entry" << "|" 
+		<< std::setw(15) << "is reference" << "|" 
+		<< std::setw(50) << "type" << "|" 
+		<< std::setw(15) << "address" << std::endl;
+	out << std::setfill('_') << std::setw(135) << "" << std::endl << std::setfill(' ');
+	
+	const auto& print_symbol = [&out](const Symbol& symbol)
+	{
+		out << symbol;
+		out << std::setfill('-') << std::setw(135) << "" << std::endl << std::setfill(' ');
+	};
+
+	std::for_each(symtab.symbols.cbegin(), symtab.symbols.cend(), print_symbol);
+
+	return out;
 }

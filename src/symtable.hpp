@@ -1,9 +1,9 @@
 #include "symbol.hpp"
+#include "compilerexception.hpp"
 #include <string>
 #include <vector>
 #include <map>
 
-extern void yyerror(char const* s);
 extern int lineno;
 
 class SymTable
@@ -24,13 +24,13 @@ class SymTable
 		int get_last_addr();
 
 		int insert(const scope&, const std::string&, const entry&,  const dtype&, int = SymTable::NONE, bool is_reference=false, int start=0, int stop=0); //general function
-		int insert(const dtype&, bool is_reference =false); //temporary
-		int insert(const std::string&, const dtype&); //constant
-		int insert(const std::string&); //label
-		int insert(const std::string&, const token&, const dtype= dtype::NONE); //identifier, constant or operator
-		int insert(int, int); //range object
-		int insert(std::vector<int>, dtype&); //begin array symbol
-		void update_var(int, int); //variable of id and type
+		int insert_temp(const dtype&, bool is_reference =false); //temporary
+		int insert_constant(const std::string&, const dtype&); //constant
+		int insert_label(const std::string&); //label
+		int insert_by_token(const std::string&, const token&, const dtype= dtype::NONE); //identifier, constant or operator
+		int insert_range(int, int); //range object
+		int insert_array_type(std::vector<int>, dtype&); //begin array symbol
+		void update_var(int, int, bool is_reference=false); //variable of id and type
 
 		int lookup(const std::string&);
 
@@ -48,4 +48,6 @@ class SymTable
 		dtype infer_type(Symbol&, Symbol&);
 
 		constexpr static int NONE =-1;
+
+		friend std::ostream& operator<<(std::ostream& out, const SymTable& symtab);
 };

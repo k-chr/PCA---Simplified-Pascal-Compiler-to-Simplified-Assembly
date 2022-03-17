@@ -28,6 +28,7 @@ const std::map<opcode, std::string> Emitter::mnemonics = {
 	{opcode::RD,       "read"},
 	{opcode::PSH,      "push"},
 	{opcode::CALL,     "call"},
+	{opcode::ENTER,	  "enter"},
 	{opcode::INCSP,   "incsp"},
 	{opcode::RET,    "return"},
 	{opcode::LEAVE,   "leave"},
@@ -39,11 +40,21 @@ std::vector<int> Emitter::get_params()
 	return this->params;
 }
 
-int Emitter::variable_or_call(int symbol_id)
+void Emitter::clear_params()
 {
-	
+	this->params.clear();
 }
 
+void Emitter::store_param_on_stack(int symbol_id)
+{
+	this->params_stack.top().push_back(symbol_id);
+}
+
+
+int Emitter::variable_or_call(int symbol_id)
+{
+
+}
 
 void Emitter::begin_parametric_expr()
 {
@@ -90,7 +101,7 @@ int Emitter::negate(Symbol& symbol)
 		throw CompilerException("Syntax error. Variable or numeric constant expected as a operand.", lineno);
 	}
 
-	return this->binop(this->symtab_ptr->get(this->symtab_ptr->lookup("-")), this->symtab_ptr->get(this->symtab_ptr->insert("0")), symbol);
+	return this->binop(this->symtab_ptr->get(this->symtab_ptr->lookup("-")), this->symtab_ptr->get(this->symtab_ptr->insert_label("0")), symbol);
 } 	
 
 int Emitter::boolean_negate(Symbol& symbol)
@@ -109,7 +120,7 @@ int Emitter::boolean_negate(Symbol& symbol)
 	auto mnemonic = this->mnemonics.at(opcode::NOT);
 	auto op = mnemonic + this->get_type_str(type);
 
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert(type));
+	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
 	
 	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}", mnemonic, symbol.name, temp.name), symbol.addr_to_str(true), temp.addr_to_str(true));
 
@@ -145,6 +156,62 @@ int Emitter::unary_op(int op_id, int operand_id)
 	}
 }
 
+void Emitter::start_program(int label_id)
+{
+	this->label(label_id);
+}
+
+void Emitter::call_program(int symbol_id)
+{
+	auto& symbol = this->symtab_ptr->get(symbol_id);
+
+	if(symbol.scope != scope::UNBOUND)
+	{
+		throw CompilerException(interpolate("Syntax error. Redefinition of \"{0}\" program.", symbol.name), lineno);
+	}
+
+	symbol.scope = scope::GLOBAL;
+	symbol.entry = entry::LABEL;
+
+	this->jump(symbol);
+}
+
+void Emitter::commit_subprogram()
+{
+	this->output << this->mem.str();
+	this->mem.str("");
+}
+
+void Emitter::leave_subprogram()
+{
+	auto leave_mnemonic = this->mnemonics.at(opcode::LEAVE);
+	auto return_mnemonic = this->mnemonics.at(opcode::RET);
+	this->emit_to_stream("\t\t", leave_mnemonic, interpolate(";\t{0}", leave_mnemonic));
+	this->emit_to_stream("\t\t", return_mnemonic, interpolate(";\t{0}", return_mnemonic));
+}
+
+void Emitter::enter(int stack_size)
+{
+	auto enter_mnemonic	= this->mnemonics.at(opcode::ENTER);
+	this->emit_to_stream("\t\t", enter_mnemonic + this->get_type_str(dtype::INT), interpolate(";\t{0}\t{1}", enter_mnemonic, stack_size), "#" + std::to_string(stack_size));
+}
+
+void Emitter::end_current_subprogram()
+{
+	auto stack_size = std::abs(this->symtab_ptr->get_last_addr());
+
+	this->leave_subprogram();
+	this->symtab_ptr->return_to_global_scope();
+	this->enter(stack_size);
+	this->commit_subprogram();
+
+	std::cout << *(this->symtab_ptr);
+
+	this->symtab_ptr->restore_checkpoint();
+	this->symtab_ptr->leave_global_scope();
+	this->symtab_ptr->create_checkpoint();
+}
+
 void Emitter::end_program()
 {
 	if (this->symtab_ptr->scope() != scope::GLOBAL)
@@ -163,7 +230,7 @@ void Emitter::label(int label_id)
 
 void Emitter::label(Symbol& symbol)
 {
-	if (symbol.entry == entry::LABEL)
+	if (symbol.entry == entry::LABEL or symbol.entry == entry::PROC or symbol.entry == entry::FUNC)
 	{
 		return this->emit_to_stream(interpolate("{0}:", symbol.name), "", "");
 	}
@@ -291,7 +358,7 @@ std::optional<int> Emitter::make_call(int proc_or_fun, bool result_required)
 
 			auto array_ref = arg_symbol.entry == entry::ARR;
 
-			auto temp = this->symtab_ptr->get(this->symtab_ptr->insert(arg_symbol.dtype, array_ref));
+			auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(arg_symbol.dtype, array_ref));
 
 			this->assign(temp, arg_symbol);
 			this->push(temp);
@@ -302,7 +369,7 @@ std::optional<int> Emitter::make_call(int proc_or_fun, bool result_required)
 
 	if (proc_or_fun_sym.entry == entry::FUNC)
 	{
-		auto res_sym = this->symtab_ptr->get(this->symtab_ptr->insert(proc_or_fun_sym.dtype));
+		auto res_sym = this->symtab_ptr->get(this->symtab_ptr->insert_temp(proc_or_fun_sym.dtype));
 		result = res_sym.symtab_id;
 		this->push(res_sym);
 	}
@@ -317,7 +384,7 @@ std::optional<int> Emitter::make_call(int proc_or_fun, bool result_required)
 		sz += static_cast<int>(varsize::REF);
 	}
 
-	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, proc_or_fun_sym.name), proc_or_fun_sym.addr_to_str());
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", mnemonic, proc_or_fun_sym.name), proc_or_fun_sym.addr_to_str(false, true));
 	this->incsp(sz);
 
 	if (result == SymTable::NONE)
@@ -354,16 +421,16 @@ int Emitter::left_eval_and_or(int lval_label, int rval, bool or_op)
 	auto op_str = or_op ? "or" : "and";
 	auto op_tok = or_op ? token::OR : token::AND;
 
-	auto temp_lval = this->symtab_ptr->get(this->symtab_ptr->insert(dtype::INT));
-	auto temp_rval = this->symtab_ptr->get(this->symtab_ptr->insert(dtype::INT));
+	auto temp_lval = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
+	auto temp_rval = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
 
-	auto op_symbol = this->symtab_ptr->get(this->symtab_ptr->insert("!=", token::RELOP));
-	auto eval_op_symbol = this->symtab_ptr->get(this->symtab_ptr->insert(op_str, op_tok));
-	auto zero = this->symtab_ptr->get(this->symtab_ptr->insert("0", dtype::INT));
-	auto one = this->symtab_ptr->get(this->symtab_ptr->insert("1", dtype::INT));
+	auto op_symbol = this->symtab_ptr->get(this->symtab_ptr->insert_by_token("!=", token::RELOP));
+	auto eval_op_symbol = this->symtab_ptr->get(this->symtab_ptr->insert_by_token(op_str, op_tok));
+	auto zero = this->symtab_ptr->get(this->symtab_ptr->insert_constant("0", dtype::INT));
+	auto one = this->symtab_ptr->get(this->symtab_ptr->insert_constant("1", dtype::INT));
 
 	auto relop_result = this->symtab_ptr->get(this->relop(op_symbol, zero, symbol));
-	auto rest_of_code = this->symtab_ptr->get(this->symtab_ptr->insert(interpolate("{0}result", op_str)));
+	auto rest_of_code = this->symtab_ptr->get(this->symtab_ptr->insert_label(interpolate("{0}result", op_str)));
 
 	auto r_enabler = or_op ? zero : one;
 	auto r_disabler = or_op ? one : zero;
@@ -405,7 +472,7 @@ int Emitter::andorop(Symbol& and_or, Symbol& first, Symbol& second)
 	}
 
 	auto type = dtype::INT;
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert(type));
+	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
 
 	if (type != first.dtype)
 	{
@@ -446,10 +513,7 @@ void Emitter::write(int symbol_id)
 			throw CompilerException(interpolate("Syntax error, expected constant or variable identifier, got a range object: {0}..{1}", symbol.start_ind, symbol.stop_ind), lineno);
         case entry::OP:
 			throw CompilerException(interpolate("Syntax error, expected constant or variable identifier, got an operator: {0}", symbol.name), lineno);
-        case entry::NONE:
-        case entry::FUNC:
-        case entry::PROC:
-        case entry::LABEL:
+        default:
         	throw CompilerException("Unknown error", lineno);
     }
 }
@@ -474,10 +538,7 @@ void Emitter::read(int symbol_id)
 			throw CompilerException(interpolate("Syntax error, expected variable identifier, got a range object: {0}..{1}", symbol.start_ind, symbol.stop_ind), lineno);
         case entry::OP:
 			throw CompilerException(interpolate("Syntax error, expected variable identifier, got an operator: {0}", symbol.name), lineno);
-        case entry::NONE:
-        case entry::FUNC:
-        case entry::PROC:
-        case entry::LABEL:
+        default:
         	throw CompilerException("Unknown error", lineno);
     }
 }
@@ -520,7 +581,7 @@ void Emitter::jump(int where)
 
 void Emitter::jump(Symbol& label)
 {
-	if (label.entry != entry::LABEL)
+	if (label.entry != entry::LABEL and label.entry != entry::FUNC and label.entry != entry::PROC)
 	{
 		throw CompilerException("Unknown error.", lineno);
 	}
@@ -542,21 +603,21 @@ int Emitter::relop(Symbol& op_symbol, Symbol& first, Symbol& second)
 	auto op_type = this->symtab_ptr->infer_type(first, second);
 	auto op_code = opcode(op_symbol.address);
 	auto type = dtype::INT;
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert(type));
+	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
 	auto mnemonic = this->mnemonics.at(op_code);
 	auto op = mnemonic + this->get_type_str(op_type);
 
-	auto true_label = this->symtab_ptr->get(this->symtab_ptr->insert(mnemonic + "true"));
-	auto false_label = this->symtab_ptr->get(this->symtab_ptr->insert(mnemonic + "false"));
+	auto true_label = this->symtab_ptr->get(this->symtab_ptr->insert_label(mnemonic + "true"));
+	auto false_label = this->symtab_ptr->get(this->symtab_ptr->insert_label(mnemonic + "false"));
 	
 	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", mnemonic, first.name, second.name, true_label.name),
 						 first.addr_to_str(true), second.addr_to_str(true), true_label.addr_to_str());
 
 	
-	this->assign(temp.symtab_id, this->symtab_ptr->insert("0", type));
+	this->assign(temp.symtab_id, this->symtab_ptr->insert_constant("0", type));
 	this->jump(false_label.symtab_id);
 	this->label(true_label.symtab_id);
-	this->assign(temp.symtab_id, this->symtab_ptr->insert("1", type));
+	this->assign(temp.symtab_id, this->symtab_ptr->insert_constant("1", type));
 	this->label(false_label.symtab_id);
 
 	return temp.symtab_id;
@@ -585,7 +646,7 @@ int Emitter::binop(Symbol& op_symbol, Symbol& first, Symbol& second)
 		second = this->symtab_ptr->get(this->cast(second, type));
 	}
 	
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert(type));
+	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
 	auto op = this->mnemonics.at(op_code) + this->get_type_str(type);
 
 	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", op, first.name, second.name, temp.name), 
@@ -675,7 +736,7 @@ int Emitter::cast(Symbol& symbol, dtype& to)
 		throw CompilerException("Unknown error.", lineno);
 	}
 	
-	auto return_id = this->symtab_ptr->insert(to);
+	auto return_id = this->symtab_ptr->insert_temp(to);
 	auto temp = this->symtab_ptr->get(return_id);
 	auto& mnemonic = this->mnemonics.at(opcd);
 	auto op = mnemonic + this->get_type_str(to);
@@ -715,7 +776,7 @@ int Emitter::begin_left_eval_or_and(opcode opcd, int lval)
 		throw CompilerException("Unknown error.", lineno);
 	}
 
-	auto eval_left_only = this->symtab_ptr->get(this->symtab_ptr->insert("leftonly"));
+	auto eval_left_only = this->symtab_ptr->get(this->symtab_ptr->insert_label("leftonly"));
 
 	auto& mnemonic = this->mnemonics.at(opcd);
 	auto op = mnemonic + this->get_type_str(dtype::INT);
