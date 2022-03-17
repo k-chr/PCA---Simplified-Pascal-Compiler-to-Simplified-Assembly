@@ -5,11 +5,19 @@ enum class scope
 	LOCAL
 };
 
+enum class local_scope
+{
+	UNBOUND,
+	FUN,
+	PROC,
+	SPECIAL
+};
+
 enum class dtype
 {
-	NONE,
 	INT,
-	REAL
+	REAL,
+	NONE
 };
 
 enum class entry
@@ -20,6 +28,7 @@ enum class entry
 	VAR,
 	NUM,
 	ARR,
+	RNG,
 	OP,
 	LABEL
 };
@@ -69,6 +78,8 @@ enum token
 
 enum class opcode
 {
+	NOP,
+	NOT,	 //OP:	 not.i arg_1, arg_to	
 	ADD,     //OP:   add.t arg_1, arg_2, arg_to
 	SUB,     //OP:   sub.t arg_1, arg_2, arg_to
 	MUL,     //OP:   mul.t arg_1, arg_2, arg_to
