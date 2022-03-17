@@ -21,7 +21,9 @@ class SymTable
 	public:
 		std::string keyword(const token);
 		Symbol& get(const int);
+		void update(Symbol&);
 		int get_last_addr();
+		int insert_array_type(std::vector<Symbol>&, dtype&);
 
 		int insert(const scope&, const std::string&, const entry&,  const dtype&, int = SymTable::NONE, bool is_reference=false, int start=0, int stop=0); //general function
 		int insert_temp(const dtype&, bool is_reference =false); //temporary
@@ -31,7 +33,7 @@ class SymTable
 		int insert_range(int, int); //range object
 		int insert_array_type(std::vector<int>, dtype&); //begin array symbol
 		void update_var(int, int, bool is_reference=false); //variable of id and type
-
+		void update_proc_or_fun(int, entry, int);
 		int lookup(const std::string&);
 
 		void clear();

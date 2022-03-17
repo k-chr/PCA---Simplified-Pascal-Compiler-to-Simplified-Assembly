@@ -82,7 +82,9 @@ subprogram:
 header:
 	FUN ID
 	{
-
+		symtab_ptr->leave_global_scope();
+		symtab_ptr->create_checkpoint();
+		symtab_ptr->set_local_scope(local_scope::FUN);
 	}
 	arguments
 	{
@@ -97,7 +99,9 @@ header:
 	';'
 	| PROC ID
 	{
-
+		symtab_ptr->leave_global_scope();
+		symtab_ptr->create_checkpoint();
+		symtab_ptr->set_local_scope(local_scope::PROC);
 	}
 	arguments
 	{	
@@ -384,7 +388,7 @@ factor:
 		try
 		{
 			auto optional_result = emitter_ptr->make_call($1, true);
-			$$ = optional_result->get();
+			$$ = optional_result->value_or(SymTable::NONE);
 		}
 		catch(const std::exception& exc)
 		{
@@ -501,23 +505,37 @@ args_decl:
 arg_decl:
 	VAR identifiers ':' type
 	{
-		auto data = emitter_ptr->get_params();
-		auto computed_type = $3;
-		std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
-			symtab_ptr->update_var(symbol_id, computed_type, true);
-			emitter_ptr->store_param_on_stack(symbol_id);
-		});
-		emitter_ptr->clear_params();
+		try
+		{
+			auto data = emitter_ptr->get_params();
+			auto computed_type = $3;
+			std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
+				symtab_ptr->update_var(symbol_id, computed_type, true);
+				emitter_ptr->store_param_on_stack(symbol_id);
+			});
+			emitter_ptr->clear_params();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	| identifiers ':' type
 	{
-		auto data = emitter_ptr->get_params();
-		auto computed_type = $3;
-		std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
-			symtab_ptr->update_var(symbol_id, computed_type);
-			emitter_ptr->store_param_on_stack(symbol_id);
-		});
-		emitter_ptr->clear_params();
+		try
+		{
+			auto data = emitter_ptr->get_params();
+			auto computed_type = $3;
+			std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
+				symtab_ptr->update_var(symbol_id, computed_type);
+				emitter_ptr->store_param_on_stack(symbol_id);
+			});
+			emitter_ptr->clear_params();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	;
 
@@ -546,7 +564,14 @@ dims:
 range:
 	NUM '.' '.' NUM
 	{
-		$$ = symtab_ptr->insert_range($1, $4);
+		try
+		{
+			$$ = symtab_ptr->insert_range($1, $4);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}S
 	}
 	;
 
@@ -561,7 +586,15 @@ type:
 	primitives
 	| ARRAY array_decl OF primitives
 	{
-		$$ = symtab_ptr->insert_array_type(emitter_ptr->get_params(), dtype($4))
+		try
+		{
+			$$ = symtab_ptr->insert_array_type(emitter_ptr->get_params(), dtype($4))
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+
 		emitter_ptr->end_parametric_expr();
 	}
 	;

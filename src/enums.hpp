@@ -33,9 +33,9 @@ inline std::ostream& operator<<(std::ostream& out, const scope sc)
 
 enum class local_scope
 {
-	UNBOUND,
-	FUN,
-	PROC
+	UNBOUND =-1,
+	FUN = 8,
+	PROC = 4
 };
 
 inline std::ostream& operator<<(std::ostream& out, const local_scope lsc)

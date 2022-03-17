@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <optional>
 #include <stack>
+#include <vector>
 
 
 extern int lineno;
@@ -27,13 +28,16 @@ class Emitter
 		std::vector<int> params;
 
 		void push(Symbol&);
+		int reduce(Symbol&, std::vector<Symbol>&);
 		void check_arrays(Symbol&, Symbol&);
+		void check_bounds(Symbol&, Symbol&);
 		int cast(Symbol&, dtype&);
 		int negate(Symbol&);
 		int boolean_negate(Symbol&);
-		int binop(Symbol&, Symbol&, Symbol&);
-		int relop(Symbol&, Symbol&, Symbol&);
-		int andorop(Symbol&, Symbol&, Symbol&);
+		int binop(opcode, Symbol&, Symbol&, Symbol* result = nullptr);
+		int relop(opcode, Symbol&, Symbol&, Symbol* result = nullptr);
+		int andorop(opcode, Symbol&, Symbol&, Symbol* result = nullptr);
+		int shift_pointer(Symbol&, Symbol&, Symbol* result = nullptr);
 		int begin_left_eval_or_and(opcode, int);
 		int left_eval_and_or(int, int, bool or_op=false);
 		void read(int);

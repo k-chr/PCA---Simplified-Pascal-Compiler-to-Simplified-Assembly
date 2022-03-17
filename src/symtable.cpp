@@ -187,7 +187,7 @@ void SymTable::update_var(int id, int type_id, bool is_reference)
 		}
 
 		symbol.dtype = arr_type.dtype;
-		symbol.args = arr_type.args;
+		symbol.args = {arr_type};
 		symbol.entry = static_cast<entry>(arr_type.address);
 		symbol.start_ind = arr_type.start_ind;
 		symbol.stop_ind = arr_type.stop_ind;
@@ -278,27 +278,11 @@ int SymTable::insert_range(int start, int end)
 	return this->insert(this->scope(), name, entry::RNG, dtype::INT, static_cast<int>(op), false, start, end);
 }
 
-int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
+int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
 {
 	std::stringstream ss("array [");
-
-	std::vector<Symbol> symbols_vec;
-
-	std::transform(dims.crbegin(), dims.crend(), std::inserter(symbols_vec, symbols_vec.begin()), [this](int id)
-	{
-		return this->get(id);
-	});
-
-	if(std::any_of(symbols_vec.cbegin(), symbols_vec.cend(), [](const auto& symbol)
-	{
-		return symbol.entry != entry::RNG or static_cast<opcode>(symbol.address) != opcode::ADD;
-	}))
-	{
-		throw CompilerException("Syntax error. Expected ascending range in array definition.", lineno);
-	}
-
 	int sum = 0;
-	std::for_each(symbols.cbegin(), symbols.cend(), [&ss, this, &sum](const auto& symbol)
+	std::for_each(symbols.cbegin(), symbols.cend(), [&ss, &sum](const auto& symbol)
 	{
 		ss << symbol.start_ind;
 		ss << "..";
@@ -331,6 +315,26 @@ int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
 	return symbol.symtab_id;
 }
 
+int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
+{
+	std::vector<Symbol> symbols_vec;
+
+	std::transform(dims.crbegin(), dims.crend(), std::inserter(symbols_vec, symbols_vec.begin()), [this](int id)
+	{
+		return this->get(id);
+	});
+
+	if(std::any_of(symbols_vec.cbegin(), symbols_vec.cend(), [](const auto& symbol)
+	{
+		return symbol.entry != entry::RNG or static_cast<opcode>(symbol.address) != opcode::ADD;
+	}))
+	{
+		throw CompilerException("Syntax error. Expected ascending range in array definition.", lineno);
+	}
+
+	return this->insert_array_type(symbols_vec, type);	
+}
+
 int SymTable::lookup(const std::string& name)
 {
 	const auto it =std::find_if(this->symbols.cbegin(), this->symbols.cend(), [&name, this](const Symbol& s)
@@ -340,6 +344,7 @@ int SymTable::lookup(const std::string& name)
 			s.entry == entry::RNG or 
 			s.entry == entry::PROC or 
 			s.entry == entry::OP or 
+			s.entry == entry::TYPE or
 			s.scope == this->scope()
 		);
 	});
@@ -350,6 +355,24 @@ int SymTable::lookup(const std::string& name)
 Symbol& SymTable::get(const int id)
 {
 	return this->symbols[id];
+}
+
+void SymTable::update(Symbol& sym)
+{
+	if(sym.symtab_id == SymTable::NONE)
+	{
+		return;
+	}
+
+	this->symbols[sym.symtab_id].address = sym.address;
+	this->symbols[sym.symtab_id].args = sym.args;
+	this->symbols[sym.symtab_id].dtype = sym.dtype;
+	this->symbols[sym.symtab_id].start_ind = sym.start_ind;
+	this->symbols[sym.symtab_id].stop_ind = sym.stop_ind;
+	this->symbols[sym.symtab_id].entry = sym.entry;
+	this->symbols[sym.symtab_id].scope = sym.scope;
+	this->symbols[sym.symtab_id].is_reference = sym.is_reference;
+	this->symbols[sym.symtab_id].name = sym.name;
 }
 
 dtype SymTable::infer_type(Symbol& first, Symbol& second)
@@ -402,19 +425,23 @@ std::ostream& operator<<(std::ostream& out, const SymTable& symtab)
 {
 	out << std::endl;
 	
-	out << std::setfill('_') << std::setw(135) << "" << std::endl << std::setfill(' ');
+	const auto& print_line = [&out](char fill, int width){
+		out << std::setfill(fill) << std::setw(width) << "" << std::endl << std::setfill(' ');
+	};
+
+	print_line('=', 135);
 	out << std::setw(10) << "scope" << "|" 
 		<< std::setw(30) << "name" << "|" 
 		<< std::setw(10) << "entry" << "|" 
 		<< std::setw(15) << "is reference" << "|" 
 		<< std::setw(50) << "type" << "|" 
 		<< std::setw(15) << "address" << std::endl;
-	out << std::setfill('_') << std::setw(135) << "" << std::endl << std::setfill(' ');
-	
-	const auto& print_symbol = [&out](const Symbol& symbol)
+	print_line('=', 135);
+
+	const auto& print_symbol = [&out, &print_line](const Symbol& symbol)
 	{
 		out << symbol;
-		out << std::setfill('-') << std::setw(135) << "" << std::endl << std::setfill(' ');
+		print_line('-', 135);
 	};
 
 	std::for_each(symtab.symbols.cbegin(), symtab.symbols.cend(), print_symbol);

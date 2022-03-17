@@ -1,4 +1,5 @@
 #include "emitter.hpp"
+#include <algorithm>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -45,15 +46,158 @@ void Emitter::clear_params()
 	this->params.clear();
 }
 
+int Emitter::get_item(int array_id)
+{
+	auto array = this->symtab_ptr->get(array_id);
+	if (array.entry != entry::ARR)
+	{
+		throw CompilerException(interpolate("Syntax error. {0} is not subscriptable.", array.entry), lineno);
+	}
+
+	auto dim_ids = this->params;
+
+	std::vector<Symbol> dims;
+
+	std::transform(dim_ids.crbegin(), dim_ids.crend(), std::inserter(dims, dims.begin()), [this](auto symbol_id)
+	{
+		return this->symtab_ptr->get(symbol_id);
+	});
+
+	return this->reduce(array, dims);
+} 
+
+int Emitter::reduce(Symbol& array, std::vector<Symbol>& dims)
+{
+	auto array_type_spec = array.args[0];
+
+	if (array_type_spec.args.size() < dims.size())
+	{
+		throw CompilerException(interpolate("Syntax error. Out of array dimensions access: {0} < {1}", array_type_spec.args.size(), dims.size()), lineno);
+	}
+
+	auto is_result_arr = array_type_spec.args.size() > dims.size();
+
+	auto temp_id = this->symtab_ptr->insert_temp(array_type_spec.dtype, is_result_arr);
+	auto temp = this->symtab_ptr->get(temp_id);
+
+	if (is_result_arr)
+	{
+		std::vector<Symbol> new_dims;
+		new_dims.insert(new_dims.cbegin(), array_type_spec.args.crbegin(), array_type_spec.args.crend() - dims.size());
+		auto temp_type = this->symtab_ptr->get(this->symtab_ptr->insert_array_type(new_dims, array_type_spec.dtype));
+		temp.entry = entry::ARR;
+		
+		temp.args = {temp_type};
+		temp.start_ind = temp_type.start_ind;
+		temp.stop_ind = temp_type.stop_ind;
+		this->symtab_ptr->update(temp);
+	}
+
+	auto offset = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
+
+	std::vector<Symbol> dim_specs(array_type_spec.args.begin(), array_type_spec.args.begin() + dims.size());
+	auto multiplier_sym = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
+	auto temp_2 = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
+
+	this->assign(multiplier_sym, this->symtab_ptr->get(this->symtab_ptr->insert_constant("1", dtype::INT)));
+	this->assign(temp_2, this->symtab_ptr->get(this->symtab_ptr->insert_constant("0", dtype::INT)));
+
+	if(is_result_arr)
+	{
+		for(auto dim : temp.args[0].args)
+		{
+			auto coeff = this->symtab_ptr->get(this->symtab_ptr->insert_constant(std::to_string(std::abs(dim.stop_ind - dim.start_ind)), dtype::INT));
+			this->binop(opcode::MUL, multiplier_sym, coeff, &multiplier_sym);
+		}
+	}
+
+	for (auto spec_it = dim_specs.rbegin(), dim_it = dims.rbegin(); spec_it < dim_specs.crend(); ++spec_it, ++dim_it)
+	{
+		//Compile-time known accessor
+		if(dim_it->entry == entry::NUM)
+		{
+			this->check_bounds(*dim_it, *spec_it);
+		}
+
+		this->binop(opcode::MUL, multiplier_sym, *dim_it, &temp_2);
+		this->binop(opcode::ADD, temp_2, offset, &offset);
+
+		auto coeff = this->symtab_ptr->get(this->symtab_ptr->insert_constant(std::to_string(std::abs(spec_it->stop_ind - spec_it->start_ind)), dtype::INT));
+		this->binop(opcode::MUL, multiplier_sym, coeff, &multiplier_sym);
+	}
+
+	this->shift_pointer(array, offset, &temp);
+
+	return temp_id;
+}
+
+int Emitter::shift_pointer(Symbol& pointer, Symbol& offset, Symbol* result)
+{
+	if (offset.entry != entry::NUM and offset.entry != entry::VAR)
+	{
+		throw CompilerException(interpolate("Unknown error. Expected constant or variable, got: {0}", offset.entry), lineno);
+	}
+
+	if (offset.dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Unknown error. Expected integer offset, got: {0}", offset.dtype), lineno);
+	}
+
+	auto temp = result == nullptr ? this->symtab_ptr->get(this->symtab_ptr->insert_temp(pointer.dtype, true)) : *result;
+	auto mnemonic = this->mnemonics.at(opcode::ADD);
+	auto op = mnemonic + this->get_type_str(dtype::INT);
+
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t&{1}, {2}, &{3}", mnemonic, pointer.name, offset.name, temp.name), 
+						 pointer.addr_to_str(false), offset.addr_to_str(true), temp.addr_to_str(false));
+
+	return temp.symtab_id;
+}
+
+void Emitter::check_bounds(Symbol& constant_dim_accessor, Symbol& axis)
+{
+	if(constant_dim_accessor.entry != entry::NUM or axis.entry != entry::RNG)
+	{
+		throw CompilerException(interpolate("Unknown error. Expected {0} entry and {1} entry, got {2}, {3}", entry::NUM, entry::RNG, constant_dim_accessor.entry, axis.entry), lineno);
+	}
+
+	if(constant_dim_accessor.dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Syntax error. Expected integer constant got: {0}", constant_dim_accessor.dtype),lineno);
+	}
+
+	int index = std::atoi(constant_dim_accessor.name.c_str());
+	if (index < axis.start_ind)
+	{
+		throw CompilerException(interpolate("{0} is smaller than the lower bound of axis dimensions {1}..{2}", index, axis.start_ind, axis.stop_ind), lineno);
+	}
+
+	if(index > axis.stop_ind)
+	{
+		throw CompilerException(interpolate("{0} is greater than the upper bound of axis dimensions {1}..{2}", index, axis.start_ind, axis.stop_ind), lineno);
+	}
+}
+
 void Emitter::store_param_on_stack(int symbol_id)
 {
 	this->params_stack.top().push_back(symbol_id);
 }
 
-
 int Emitter::variable_or_call(int symbol_id)
 {
+	auto symbol = this->symtab_ptr->get(symbol_id);
+	
+	if(symbol.entry == entry::VAR or symbol.entry == entry::ARR)
+	{
+		return symbol_id;
+	}
 
+	if(symbol.entry == entry::FUNC or symbol.entry == entry::PROC)
+	{	
+		auto result = this->make_call(symbol_id);
+		return result.value_or(SymTable::NONE);
+	}
+
+	throw CompilerException("Syntax error. Illegal expression.", lineno);
 }
 
 void Emitter::begin_parametric_expr()
@@ -101,7 +245,7 @@ int Emitter::negate(Symbol& symbol)
 		throw CompilerException("Syntax error. Variable or numeric constant expected as a operand.", lineno);
 	}
 
-	return this->binop(this->symtab_ptr->get(this->symtab_ptr->lookup("-")), this->symtab_ptr->get(this->symtab_ptr->insert_label("0")), symbol);
+	return this->binop(opcode::SUB, this->symtab_ptr->get(this->symtab_ptr->insert_label("0")), symbol);
 } 	
 
 int Emitter::boolean_negate(Symbol& symbol)
@@ -208,8 +352,7 @@ void Emitter::end_current_subprogram()
 	std::cout << *(this->symtab_ptr);
 
 	this->symtab_ptr->restore_checkpoint();
-	this->symtab_ptr->leave_global_scope();
-	this->symtab_ptr->create_checkpoint();
+
 }
 
 void Emitter::end_program()
@@ -267,8 +410,9 @@ void Emitter::check_arrays(Symbol& arr1, Symbol& arr2)
 	{
 		throw CompilerException("Unknown exception, one of variables is not array", lineno);
 	}
-	auto& dims1 = arr1.args;
-	auto& dims2 = arr2.args;
+
+	auto& dims1 = arr1.args[0].args;
+	auto& dims2 = arr2.args[0].args;
 
 	if(dims1.size() != dims2.size())
 	{
@@ -418,19 +562,16 @@ int Emitter::left_eval_and_or(int lval_label, int rval, bool or_op)
 		throw CompilerException("Unknown error.", lineno);
 	}
 
-	auto op_str = or_op ? "or" : "and";
-	auto op_tok = or_op ? token::OR : token::AND;
-
 	auto temp_lval = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
 	auto temp_rval = this->symtab_ptr->get(this->symtab_ptr->insert_temp(dtype::INT));
 
-	auto op_symbol = this->symtab_ptr->get(this->symtab_ptr->insert_by_token("!=", token::RELOP));
-	auto eval_op_symbol = this->symtab_ptr->get(this->symtab_ptr->insert_by_token(op_str, op_tok));
+	auto op_symbol = opcode::NE;
+	auto eval_op_symbol = or_op? opcode::OR : opcode::AND;
 	auto zero = this->symtab_ptr->get(this->symtab_ptr->insert_constant("0", dtype::INT));
 	auto one = this->symtab_ptr->get(this->symtab_ptr->insert_constant("1", dtype::INT));
 
 	auto relop_result = this->symtab_ptr->get(this->relop(op_symbol, zero, symbol));
-	auto rest_of_code = this->symtab_ptr->get(this->symtab_ptr->insert_label(interpolate("{0}result", op_str)));
+	auto rest_of_code = this->symtab_ptr->get(this->symtab_ptr->insert_label(interpolate("{0}result", eval_op_symbol)));
 
 	auto r_enabler = or_op ? zero : one;
 	auto r_disabler = or_op ? one : zero;
@@ -456,14 +597,8 @@ int Emitter::or_else(int lval_label, int rval)
 	return this->left_eval_and_or(lval_label, rval, true);
 }
 
-int Emitter::andorop(Symbol& and_or, Symbol& first, Symbol& second)
+int Emitter::andorop(opcode opcd, Symbol& first, Symbol& second, Symbol* result)
 {
-	if (and_or.entry != entry::OP)
-	{
-		throw CompilerException("Unknown error.", lineno);
-	}
-
-	auto opcd = static_cast<opcode>(and_or.address);
 	auto mnemonic = this->mnemonics.at(opcd);
 
 	if (opcd != opcode::OR and opcd != opcode::AND)
@@ -472,7 +607,7 @@ int Emitter::andorop(Symbol& and_or, Symbol& first, Symbol& second)
 	}
 
 	auto type = dtype::INT;
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
+	auto temp = result == nullptr ? this->symtab_ptr->get(this->symtab_ptr->insert_temp(type)) : *result;
 
 	if (type != first.dtype)
 	{
@@ -591,9 +726,9 @@ void Emitter::jump(Symbol& label)
 	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, label.name), label.addr_to_str());
 }
 
-int Emitter::relop(Symbol& op_symbol, Symbol& first, Symbol& second)
+int Emitter::relop(opcode op_code, Symbol& first, Symbol& second, Symbol* result)
 {
-	if(not (op_symbol.entry == entry::OP and (
+	if(not ((
 			first.entry == entry::NUM or first.entry == entry::VAR
 		) and (
 			second.entry == entry::NUM or second.entry == entry::VAR
@@ -601,9 +736,8 @@ int Emitter::relop(Symbol& op_symbol, Symbol& first, Symbol& second)
 	)) throw CompilerException("Unknown error.", lineno);
 
 	auto op_type = this->symtab_ptr->infer_type(first, second);
-	auto op_code = opcode(op_symbol.address);
 	auto type = dtype::INT;
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
+	auto temp = result == nullptr ? this->symtab_ptr->get(this->symtab_ptr->insert_temp(type)) : *result;
 	auto mnemonic = this->mnemonics.at(op_code);
 	auto op = mnemonic + this->get_type_str(op_type);
 
@@ -623,9 +757,9 @@ int Emitter::relop(Symbol& op_symbol, Symbol& first, Symbol& second)
 	return temp.symtab_id;
 }
 
-int Emitter::binop(Symbol& op_symbol, Symbol& first, Symbol& second)
+int Emitter::binop(opcode op_code, Symbol& first, Symbol& second, Symbol* result)
 {
-	if(not (op_symbol.entry == entry::OP and (
+	if(not ((
 			first.entry == entry::NUM or first.entry == entry::VAR
 		) and (
 			second.entry == entry::NUM or second.entry == entry::VAR
@@ -634,7 +768,6 @@ int Emitter::binop(Symbol& op_symbol, Symbol& first, Symbol& second)
 
 
 	auto type = this->symtab_ptr->infer_type(first, second);
-	auto op_code = opcode(op_symbol.address);
 	
 	if (type != first.dtype)
 	{
@@ -646,7 +779,7 @@ int Emitter::binop(Symbol& op_symbol, Symbol& first, Symbol& second)
 		second = this->symtab_ptr->get(this->cast(second, type));
 	}
 	
-	auto temp = this->symtab_ptr->get(this->symtab_ptr->insert_temp(type));
+	auto temp = result == nullptr ? this->symtab_ptr->get(this->symtab_ptr->insert_temp(type)) : *result;
 	auto op = this->mnemonics.at(op_code) + this->get_type_str(type);
 
 	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", op, first.name, second.name, temp.name), 
@@ -685,17 +818,17 @@ int Emitter::binary_op(int op_id, int operand1, int operand2)
 		case opcode::MUL:
 		case opcode::DIV:
 		case opcode::MOD:
-			return binop(op_symbol, first, second);
+			return binop(op_code, first, second);
 		case opcode::AND:
 		case opcode::OR:
-			return andorop(op_symbol, first, second);
+			return andorop(op_code, first, second);
 		case opcode::NE:
 		case opcode::LE:
 		case opcode::LT:
 		case opcode::GE:
 		case opcode::GT:
 		case opcode::EQ:
-			return relop(op_symbol, first, second);
+			return relop(op_code, first, second);
 		default: throw CompilerException(interpolate("Invalid operation: {0} is not binary operator", op_symbol.name), lineno);
 	}
 }
