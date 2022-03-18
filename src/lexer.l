@@ -113,43 +113,43 @@ other		.
 				return token::IN;
 			}
 {not}		{
-				*yylval = symtab_ptr->insert(yytext, token::NOT);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::NOT);
 				return token::NOT;
 			}
 {mulop}		{
-				*yylval = symtab_ptr->insert(yytext, token::MULOP);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::MULOP);
 				return token::MULOP;
 			}
 {sign}		{
-				*yylval = symtab_ptr->insert(yytext, token::SIGN);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::SIGN);
 				return token::SIGN;
 			}
 {or}		{
-				*yylval = symtab_ptr->insert(yytext, token::OR);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::OR);
 				return token::OR;
 			}
 {and}		{
-				*yylval = symtab_ptr->insert(yytext, token::AND);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::AND);
 				return token::AND;
 			}
 {relop}		{
-				*yylval = symtab_ptr->insert(yytext, token::RELOP);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::RELOP);
 				return token::RELOP;
 			}
 {assign}	{
-				*yylval = symtab_ptr->insert(yytext, token::ASSIGN);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::ASSIGN);
 				return token::ASSIGN;
 			}
 {id}		{
-				*yylval = symtab_ptr->insert(yytext, token::ID);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::ID);
 				return token::ID;
 			}
 {digits}	{
-				*yylval = symtab_ptr->insert(yytext, token::NUM, dtype::INT);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::NUM, dtype::INT);
 				return token::NUM;
 			}
 {floating}	{
-				*yylval = symtab_ptr->insert(yytext, token::NUM, dtype::REAL);
+				*yylval = symtab_ptr->insert_by_token(yytext, token::NUM, dtype::REAL);
 				return token::NUM;
 			}
 <<EOF>>		{
