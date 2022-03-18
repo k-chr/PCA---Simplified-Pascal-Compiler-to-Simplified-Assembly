@@ -6,6 +6,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
 	{"*", 		opcode::MUL},
@@ -151,52 +152,13 @@ int SymTable::insert_temp(const dtype& type, bool is_reference)
 					offset = static_cast<int>(varsize::REAL);
 					break;
 				}
-            	case dtype::NONE:break;
+            	default:break;
             }
         }
 		address -= offset;
 	}
 
 	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type, address, is_reference);
-}
-
-void SymTable::update_var(int id, int type_id, bool is_reference)
-{
-	auto& symbol = this->get(id);
-
-	if(symbol.scope != scope::UNBOUND)
-	{
-		throw CompilerException(interpolate("Syntax error. Redefinition of variable: {0}", symbol.name), lineno);
-	}
-
-	auto addr = this->get_last_addr();
-	
-	symbol.scope = this->scope();
-	symbol.address = addr;
-	symbol.is_reference = is_reference;
-	auto none_type = static_cast<int>(dtype::NONE);
-
-	if (type_id >= none_type)
-	{
-		type_id -= none_type;
-		auto arr_type = this->get(type_id);
-
-		if (arr_type.entry != entry::TYPE)
-		{
-			throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", arr_type.entry), lineno);
-		}
-
-		symbol.dtype = arr_type.dtype;
-		symbol.args = {arr_type};
-		symbol.entry = static_cast<entry>(arr_type.address);
-		symbol.start_ind = arr_type.start_ind;
-		symbol.stop_ind = arr_type.stop_ind;
-	}
-	else
-	{
-		symbol.entry = entry::VAR;
-		symbol.dtype = dtype(type_id);
-	}
 }
 
 int SymTable::insert_by_token(const std::string& yytext, const token& op, const dtype dtype)
@@ -299,10 +261,10 @@ int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
 	ss << " of " << (type == dtype::INT ? "integer" : "real");
 	
 	auto name = ss.str();
-
+	
 	if (int out_id = this->lookup(name); out_id != SymTable::NONE)
 	{
-		return out_id;
+		return out_id + static_cast<int>(dtype::OBJECT);
 	}
 
 	auto id = this->insert(this->scope(), name, entry::TYPE, type, static_cast<int>(entry::ARR), false);
@@ -312,7 +274,7 @@ int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
 	symbol.start_ind = 0;
 	symbol.stop_ind = sum; 
 
-	return symbol.symtab_id;
+	return symbol.symtab_id + static_cast<int>(dtype::OBJECT);
 }
 
 int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
@@ -333,6 +295,109 @@ int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
 	}
 
 	return this->insert_array_type(symbols_vec, type);	
+}
+
+Symbol& SymTable::check_symbol(int id)
+{
+	auto& symbol = this->get(id);
+
+	if(symbol.scope != scope::UNBOUND)
+	{
+		throw CompilerException(interpolate("Syntax error. Redefinition of {0}: {1}", symbol.entry, symbol.name), lineno);
+	}
+
+	return symbol;
+}
+
+void SymTable::update_var(int id, int type_id, bool is_reference)
+{
+	auto& symbol = this->check_symbol(id);
+	
+	symbol.scope = this->scope();
+	symbol.is_reference = is_reference;
+	auto offset = static_cast<int>(dtype::OBJECT);
+
+	if (type_id >= offset)
+	{
+		type_id -= offset;
+		auto arr_type = this->get(type_id);
+
+		if (arr_type.entry != entry::TYPE)
+		{
+			throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", arr_type.entry), lineno);
+		}
+
+		symbol.dtype = arr_type.dtype;
+		symbol.args = {arr_type};
+		symbol.entry = static_cast<entry>(arr_type.address);
+		symbol.start_ind = arr_type.start_ind;
+		symbol.stop_ind = arr_type.stop_ind;
+	}
+	else
+	{
+		symbol.entry = entry::VAR;
+		symbol.dtype = dtype(type_id);
+	}
+}
+
+void SymTable::update_addresses(std::vector<int>& args)
+{
+	std::vector<Symbol> arg_symbols;
+	std::transform(args.crbegin(), args.crend(), std::inserter(arg_symbols, arg_symbols.begin()), [this](auto sym_id){return this->get(sym_id);});
+
+	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this](auto& sym)
+	{
+		sym.address = this->get_last_addr();
+	});
+}
+
+
+void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& args, int type)
+{
+	auto& symbol = this->check_symbol(id);
+
+	if(entry_type != entry::FUNC and entry_type != entry::PROC)
+	{
+		throw CompilerException(interpolate("Unknown error. Expected FUNC or PROC, got {0}", entry_type), lineno);
+	}
+
+	symbol.entry = entry_type;
+	symbol.scope = scope::GLOBAL;
+	symbol.address = static_cast<int>(this->local_scope());
+
+	if(type != SymTable::NONE)
+	{
+		
+		auto offset = static_cast<int>(dtype::OBJECT);
+		if (type >= offset)
+		{
+			auto type_id = type - offset;
+			auto type_sym = this->get(type_id);
+
+			if (type_sym.entry != entry::TYPE)
+			{
+				throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", type_sym.entry), lineno);
+			}
+
+			auto& function_result = this->get(this->insert(scope::LOCAL, 
+														   symbol.name, 
+														   static_cast<entry>(type_sym.address), 
+														   type_sym.dtype, 
+														   static_cast<int>(this->local_scope()),
+														   true,
+														   type_sym.start_ind,
+														   type_sym.stop_ind));
+			function_result.args = {type_sym};
+			symbol.dtype = dtype::OBJECT;
+		}
+		else 
+		{
+			symbol.dtype = static_cast<dtype>(type);
+			this->insert(scope::LOCAL, symbol.name, entry::VAR, static_cast<dtype>(type), static_cast<int>(this->local_scope()), true);
+		}
+	}
+
+	this->update_addresses(args);
 }
 
 int SymTable::lookup(const std::string& name)

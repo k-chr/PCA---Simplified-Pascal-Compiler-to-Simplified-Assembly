@@ -11,7 +11,7 @@
 #include <optional>
 #include <stack>
 #include <vector>
-
+#include <tuple>
 
 extern int lineno;
 
@@ -46,6 +46,7 @@ class Emitter
 		void assign(Symbol&, Symbol&);
 		void label(Symbol&);
 		void jump(Symbol&);
+		void jump_if(Symbol&, Symbol&, Symbol&, opcode=opcode::EQ);
 		void enter(int);
 
 		void leave_subprogram();
@@ -80,11 +81,18 @@ class Emitter
 		void end_program();
 		void label(int);
 		int cast(int, dtype&);
-
+		int if_statement(int);
+		int end_if();
+		std::tuple<int, int> while_statement(int);
+		std::tuple<int, int> classic_for_statement(int, int, int, int);
+		void classic_end_iteration(int, int, int);
+		int repeat();
+		void until(int, int);
+		
 		void write()
 		{
 			auto data = this->params;
-			if(data.empty()) throw CompilerException(interpolate("Syntax erorr. Write procedure expects at least one argument."), lineno);
+			if(data.empty()) throw CompilerException(interpolate("Syntax error. Write procedure expects at least one argument."), lineno);
 			std::for_each(data.cbegin(), data.cend(), [this](auto symbol_id){this->write(symbol_id);});
 		}
 
@@ -97,7 +105,7 @@ class Emitter
 		void read()
 		{
 			auto data = this->params;
-			if(data.empty()) throw CompilerException(interpolate("Syntax erorr. Read procedure expects at least one argument."), lineno);
+			if(data.empty()) throw CompilerException(interpolate("Syntax error. Read procedure expects at least one argument."), lineno);
 			std::for_each(data.cbegin(), data.cend(), [this](auto symbol_id){this->read(symbol_id);});
 		}
 

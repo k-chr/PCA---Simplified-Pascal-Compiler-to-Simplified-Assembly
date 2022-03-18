@@ -232,7 +232,7 @@ std::string Emitter::get_type_str(const dtype& type)
 			out =".i";
 			break;
 		}
-       	case dtype::NONE: break;
+       	default: break;
     }
 
 	return out;
@@ -352,7 +352,6 @@ void Emitter::end_current_subprogram()
 	std::cout << *(this->symtab_ptr);
 
 	this->symtab_ptr->restore_checkpoint();
-
 }
 
 void Emitter::end_program()
@@ -369,6 +368,138 @@ void Emitter::label(int label_id)
 {
 	auto symbol = this->symtab_ptr->get(label_id);
 	return this->label(symbol);
+}
+
+void Emitter::jump_if(Symbol& expression, Symbol& test, Symbol& where, opcode opcd)
+{
+	if(expression.entry != entry::VAR and expression.entry != entry::NUM)
+	{
+		throw CompilerException(interpolate("Syntax error. Boolean value is ambigious for {0}", expression.entry), lineno);
+	}
+
+	if(test.entry != entry::VAR and test.entry != entry::NUM)
+	{
+		throw CompilerException(interpolate("Syntax error. Boolean value is ambigious for {0}", test.entry), lineno);
+	}
+
+	if(where.entry != entry::LABEL)
+	{
+		throw CompilerException(interpolate("Unknown error. Target entry is expected to be a LABEL, got {0}", where.entry), lineno);
+	}
+
+	auto mnemonic = this->mnemonics.at(opcd);
+	auto op = mnemonic + this->get_type_str(expression.dtype);
+
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", mnemonic, expression.name, test.name, where.name), 
+		expression.addr_to_str(true), test.addr_to_str(true), where.addr_to_str(true));
+}
+
+int Emitter::end_if()
+{
+	auto result = this->symtab_ptr->insert_label("endif");
+	this->jump(result);
+	return result;
+}
+
+int Emitter::if_statement(int expression_id)
+{
+	auto expression = this->symtab_ptr->get(expression_id);
+	auto else_label = this->symtab_ptr->get(this->symtab_ptr->insert_label("else"));
+	auto zero = this->symtab_ptr->get(this->symtab_ptr->insert_constant("0", expression.dtype));
+	this->jump_if(expression, zero, else_label);
+
+	return else_label.symtab_id;
+}
+
+std::tuple<int, int> Emitter::while_statement(int expression_id)
+{
+	auto expression = this->symtab_ptr->get(expression_id);
+	auto while_label = this->symtab_ptr->get(this->symtab_ptr->insert_label("while"));
+	auto else_label = this->symtab_ptr->get(this->symtab_ptr->insert_label("endwhile"));
+	auto zero = this->symtab_ptr->get(this->symtab_ptr->insert_constant("0", expression.dtype));
+
+	this->label(while_label);
+	this->jump_if(expression, zero, else_label);
+
+	return {while_label.symtab_id, else_label.symtab_id};
+}
+
+std::tuple<int, int> Emitter::classic_for_statement(int variable_id, int init_value_id, int dec_or_inc, int control_value)
+{
+	auto variable = this->symtab_ptr->get(variable_id);
+	auto init_value = this->symtab_ptr->get(init_value_id);
+	auto test = this->symtab_ptr->get(control_value);
+
+	auto for_label = this->symtab_ptr->get(this->symtab_ptr->insert_label("for"));
+	auto else_label = this->symtab_ptr->get(this->symtab_ptr->insert_label("endfor"));
+
+	auto opcd = static_cast<opcode>(dec_or_inc);
+
+	if(opcd != opcode::ADD and opcd != opcode::SUB)
+	{
+		throw CompilerException(interpolate("Unknown error. Expected SUB or ADD operator, got {0}", opcd), lineno);
+	}
+
+	if (variable.dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Syntax error. Variable should be of integer type, not: {0}", variable.dtype), lineno);
+	}
+
+	if (test.dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Syntax error. Control value should be of integer type, not: {0}", test.dtype), lineno);
+	}
+
+	if (init_value.dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Syntax error. Initial value should be of integer type, not: {0}", init_value.dtype), lineno);
+	}
+
+	auto rel_opcd = opcd == opcode::ADD ? opcode::GT : opcode::LT;
+
+	this->assign(variable, init_value);
+	this->label(for_label);
+	this->jump_if(variable, test, else_label, rel_opcd);
+
+	return {for_label.symtab_id, else_label.symtab_id};
+}
+
+void Emitter::classic_end_iteration(int variable_id, int dec_or_inc, int for_label_id)
+{
+	auto opcd = static_cast<opcode>(dec_or_inc);
+	auto variable = this->symtab_ptr->get(variable_id);
+	auto for_label = this->symtab_ptr->get(for_label_id);
+
+	if(opcd != opcode::ADD and opcd != opcode::SUB)
+	{
+		throw CompilerException(interpolate("Unknown error. Expected SUB or ADD operator, got {0}", opcd), lineno);
+	}
+
+	if (variable.dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Syntax error. Variable should be of integer type, not: {0}", variable.dtype), lineno);
+	}
+	
+	auto one = this->symtab_ptr->get(this->symtab_ptr->insert_constant("1", dtype::INT));
+
+	this->binop(opcd, variable, one, &variable);
+	this->jump(for_label);
+}
+
+int Emitter::repeat()
+{
+	auto repeat_label = this->symtab_ptr->get(this->symtab_ptr->insert_label("repeat"));
+	this->label(repeat_label);
+	return repeat_label.symtab_id;
+}
+
+void Emitter::until(int repeat_label_id, int expression_id)
+{
+	auto repeat_label = this->symtab_ptr->get(repeat_label_id);
+	auto expression = this->symtab_ptr->get(expression_id);
+	auto one = this->symtab_ptr->get(this->symtab_ptr->insert_constant("1", expression.dtype));
+
+	this->jump_if(expression, one, repeat_label);
 }
 
 void Emitter::label(Symbol& symbol)
@@ -860,7 +991,7 @@ int Emitter::cast(Symbol& symbol, dtype& to)
 			opcd = opcode::I2R;
 			break;
 		}
-        case dtype::NONE:
+        default:
           break;
     }
 

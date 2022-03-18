@@ -63,9 +63,10 @@ inline std::ostream& operator<<(std::ostream& out, const local_scope lsc)
 
 enum class dtype
 {
+	NONE,
 	INT,
 	REAL,
-	NONE
+	OBJECT
 };
 
 inline std::ostream& operator<<(std::ostream& out, const dtype t)
@@ -85,6 +86,11 @@ inline std::ostream& operator<<(std::ostream& out, const dtype t)
         case dtype::NONE:
 		{
 			out << "NONE";
+			break;
+		}
+		case dtype::OBJECT:
+		{
+			out << "object";
 			break;
 		}
     }

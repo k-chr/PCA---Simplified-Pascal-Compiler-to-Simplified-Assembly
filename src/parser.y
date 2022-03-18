@@ -3,6 +3,7 @@
 	#include <exception>
 	#include <iostream>
 	#include <algorithm>
+	#include <tuple>
 
 	void yyerror(std::exception& exc);
 	void yyerror(const char* message);
@@ -25,15 +26,37 @@ UNTIL FOR IN TO DOWNTO WRITE READ RELOP MULOP SIGN ASSIGN AND OR NOT ID NUM NONE
 %%
 
 program:
-	PROGRAM ID '(' program_args ')' ';' variable_decl
+	PROGRAM ID '(' program_args ')' ';' 
 	{
-		emitter_ptr->call_program($2);
-		symtab_ptr->leave_global_scope();
-		symtab_ptr->create_checkpoint();
+		emitter_ptr->begin_parametric_expr();
+		emitter_ptr->begin_parametric_expr();
+	} variable_decl
+	{
+		try
+		{
+			emitter_ptr->end_parametric_expr();
+			symtab_ptr->update_addresses(emitter_ptr->get_params());
+			emitter_ptr->end_parametric_expr();
+			emitter_ptr->call_program($2);
+			symtab_ptr->leave_global_scope();
+			symtab_ptr->create_checkpoint();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+
 	} subprogram_decl
 	{
 		symtab_ptr->return_to_global_scope();
-		emitter_ptr->start_program($2);
+		try
+		{
+			emitter_ptr->start_program($2);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	block
 	'.'
@@ -48,10 +71,21 @@ program_args:
 variable_decl:
 	variable_decl VAR identifiers ':' type ';'
 	{
-		auto data = emitter_ptr->get_params();
-		auto computed_type = $5;
-		std::for_each(data.crbegin(), data.crend(), [symtab_ptr, computed_type](auto symbol_id){symtab_ptr->update_var(symbol_id, computed_type);});
-		emitter_ptr->clear_params();
+		try
+		{
+			auto data = emitter_ptr->get_params();
+			auto computed_type = $5;
+			std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id)
+			{
+				symtab_ptr->update_var(symbol_id, computed_type);
+				emitter_ptr->store_param_on_stack(symbol_id);
+			});
+			emitter_ptr->clear_params();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 	}
 	| %empty
 	;
@@ -73,7 +107,23 @@ subprogram_decl:
 	;
 
 subprogram:
-	header variable_decl block
+	header 
+	{
+		emitter_ptr->begin_parametric_expr();
+		emitter_ptr->begin_parametric_expr();
+	} variable_decl
+	{
+		try
+		{
+			emitter_ptr->end_parametric_expr();//stack of variables
+			symtab_ptr->update_addresses(emitter_ptr->get_params());
+			emitter_ptr->end_parametric_expr(); //basic vector
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+	} block
 	{
 		emitter_ptr->end_current_subprogram();
 	}
@@ -87,14 +137,18 @@ header:
 		symtab_ptr->set_local_scope(local_scope::FUN);
 	}
 	arguments
-	{
-		auto data = emitter_ptr->get_params();
-		
-		emitter_ptr->end_parametric_expr();
-	}
 	':' type
 	{
-
+		auto data = emitter_ptr->get_params();
+		try
+		{
+			symtab_ptr->update_proc_or_fun($2, entry::PROC, data, $5);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+		emitter_ptr->end_parametric_expr();
 	}
 	';'
 	| PROC ID
@@ -106,7 +160,14 @@ header:
 	arguments
 	{	
 		auto data = emitter_ptr->get_params();
-
+		try
+		{
+			symtab_ptr->update_proc_or_fun($2, entry::PROC, data);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
 		emitter_ptr->end_parametric_expr();
 	}
 	';'
@@ -155,24 +216,63 @@ statement:
 	}
 	| 	IF expression
 		{
-
+			try
+			{
+				$5 = emitter_ptr->if_statement($2);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 		} 
 	 	THEN statement
 	  	{
-
+			try
+			{
+				$4 = emitter_ptr->end_if();
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 		}
 	  	optional_else
+		{
+			try
+			{
+				emitter_ptr->label($4);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
+		}
 	| 	WHILE expression
 		{
-
+			try
+			{
+				std::tie($1, $3) = emitter_ptr->while_statement($2);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 		}
 	  	DO statement
 	  	{
-
+			try
+			{
+				emitter_ptr->jump($1);
+				emitter_ptr->label($3);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 	  	}
 	|	FOR ID
 		{
-
+			
 		}
 		IN ID
 		{
@@ -182,31 +282,86 @@ statement:
 		{
 
 		}
-	|	FOR variable
+	|	FOR variable ASSIGN expression inc_or_dec expression
 		{
-
-		}
-		ASSIGN NUM 
+			try
+			{
+				std::tie($1, $3) = emitter_ptr->classic_for_statement($2, $4, $5, $6);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
+		} DO statement
 		{
-			
-		}
-		inc_or_dec DO statement
-		{
-
+			try
+			{
+				emitter_ptr->classic_end_interation($2, $5, $1);
+				emitter_ptr->label($3);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 		}
 	|	REPEAT statement
 		{
-
+			try
+			{
+				$1 = emitter_ptr->repeat();
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 		}
 		UNTIL expression
 		{
-
+			try
+			{
+				emitter_ptr->until($1, $2);
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+			}
 		}
 	;
 
 inc_or_dec:
 	TO
+	{
+		$$ = static_cast<int>opcode::ADD;
+	}
 	| DOWNTO
+	{
+		$$ = static_cast<int>opcode::SUB;
+	}
+	;
+
+optional_else:
+	ELSE 
+	{
+		try
+		{
+			emitter_ptr->label($$);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+	} statement ';'
+	| ';'
+	{
+		try
+		{
+			emitter_ptr->label($$);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+		}
+	}
 	;
 
 read:
@@ -256,14 +411,6 @@ call:
 		$$ = $1;
 		emitter_ptr->begin_parametric_expr();
 	} expression_list ')'
-	;
-
-optional_else:
-	ELSE statement ';'
-	{
-
-	}
-	| ';'
 	;
 
 expression:

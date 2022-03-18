@@ -17,7 +17,8 @@ class SymTable
 		local_scope current_local_scope = local_scope::UNBOUND;
 		const static std::map<std::string, opcode> relops_mulops_signops;
 		const static std::map<token, std::string> keywords;
-
+		Symbol& check_symbol(int);
+		
 	public:
 		std::string keyword(const token);
 		Symbol& get(const int);
@@ -32,8 +33,10 @@ class SymTable
 		int insert_by_token(const std::string&, const token&, const dtype= dtype::NONE); //identifier, constant or operator
 		int insert_range(int, int); //range object
 		int insert_array_type(std::vector<int>, dtype&); //begin array symbol
+
 		void update_var(int, int, bool is_reference=false); //variable of id and type
-		void update_proc_or_fun(int, entry, int);
+		void update_proc_or_fun(int, entry, std::vector<int>&, int type=SymTable::NONE);
+		void update_addresses(std::vector<int>&);
 		int lookup(const std::string&);
 
 		void clear();
