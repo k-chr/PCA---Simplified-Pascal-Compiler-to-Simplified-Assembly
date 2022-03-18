@@ -1,9 +1,4 @@
 #include "compiler.hpp"
-#include <cstdlib>
-#include <fstream>
-#include <memory>
-#include <stdio.h>
-#include <string>
 
 void Compiler::compile()
 {

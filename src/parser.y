@@ -5,11 +5,15 @@
 	#include <algorithm>
 	#include <tuple>
 
-	void yyerror(std::exception& exc);
+	void yyerror(const std::exception& exc);
 	void yyerror(const char* message);
+
+	int opt_else_helper = 0;
 %}
 
 %output "parser.cpp"
+%verbose
+
 
 %union	{
 	int int_val;
@@ -17,11 +21,11 @@
 
 %type <int_val> program header program_args variable_decl subprogram_decl block eof identifiers type
 subprogram arguments statements statement_list statement args_decl arg_decl primitives array_decl range 
-dims variable expression and_then or_else mulop dim_expr dim_exprs dim_comma_expr comma_expr optional_else
+dims variable expression mulop addop dim_exprs comma_expr optional_else
 optional_args call inc_or_dec expression_list read write simple_expression term factor
 
 %token <int_val> PROGRAM BEGIN_TOK END VAR INTEGER REAL ARRAY OF FUN PROC IF THEN ELSE DO WHILE REPEAT
-UNTIL FOR IN TO DOWNTO WRITE READ RELOP MULOP SIGN ASSIGN AND OR NOT ID NUM NONE DONE
+UNTIL FOR IN TO DOWNTO WRITE READ RELOP AND_THEN MULOP SIGN ASSIGN AND OR_ELSE OR NOT ID NUM NONE DONE
 
 %%
 
@@ -35,7 +39,8 @@ program:
 		try
 		{
 			emitter_ptr->end_parametric_expr();
-			symtab_ptr->update_addresses(emitter_ptr->get_params());
+			auto data = emitter_ptr->get_params();
+			symtab_ptr->update_addresses(data);
 			emitter_ptr->end_parametric_expr();
 			emitter_ptr->call_program($2);
 			symtab_ptr->leave_global_scope();
@@ -44,6 +49,7 @@ program:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 
 	} subprogram_decl
@@ -56,6 +62,7 @@ program:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	block
@@ -75,7 +82,7 @@ variable_decl:
 		{
 			auto data = emitter_ptr->get_params();
 			auto computed_type = $5;
-			std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id)
+			std::for_each(data.crbegin(), data.crend(), [&computed_type](auto symbol_id)
 			{
 				symtab_ptr->update_var(symbol_id, computed_type);
 				emitter_ptr->store_param_on_stack(symbol_id);
@@ -85,6 +92,7 @@ variable_decl:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	| %empty
@@ -116,12 +124,14 @@ subprogram:
 		try
 		{
 			emitter_ptr->end_parametric_expr();//stack of variables
-			symtab_ptr->update_addresses(emitter_ptr->get_params());
+			auto data = emitter_ptr->get_params();
+			symtab_ptr->update_addresses(data);
 			emitter_ptr->end_parametric_expr(); //basic vector
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	} block
 	{
@@ -142,11 +152,12 @@ header:
 		auto data = emitter_ptr->get_params();
 		try
 		{
-			symtab_ptr->update_proc_or_fun($2, entry::PROC, data, $5);
+			symtab_ptr->update_proc_or_fun($2, entry::PROC, data, $6);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 		emitter_ptr->end_parametric_expr();
 	}
@@ -167,6 +178,7 @@ header:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 		emitter_ptr->end_parametric_expr();
 	}
@@ -199,9 +211,12 @@ statement:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	| block
+	| write
+	| read
 	| call
 	{
 		try
@@ -211,6 +226,7 @@ statement:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 		emitter_ptr->end_parametric_expr();
 	}
@@ -218,44 +234,49 @@ statement:
 		{
 			try
 			{
-				$5 = emitter_ptr->if_statement($2);
+				$2 = emitter_ptr->if_statement($2);
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		} 
 	 	THEN statement
 	  	{
 			try
 			{
-				$4 = emitter_ptr->end_if();
+				opt_else_helper = $2;
+				$5 = emitter_ptr->end_if();
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		}
 	  	optional_else
 		{
 			try
 			{
-				emitter_ptr->label($4);
+				emitter_ptr->label($5);
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		}
 	| 	WHILE expression
 		{
 			try
 			{
-				std::tie($1, $3) = emitter_ptr->while_statement($2);
+				std::tie($1, $2) = emitter_ptr->while_statement($2);
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		}
 	  	DO statement
@@ -263,11 +284,12 @@ statement:
 			try
 			{
 				emitter_ptr->jump($1);
-				emitter_ptr->label($3);
+				emitter_ptr->label($2);
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 	  	}
 	|	FOR ID
@@ -291,17 +313,19 @@ statement:
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		} DO statement
 		{
 			try
 			{
-				emitter_ptr->classic_end_interation($2, $5, $1);
+				emitter_ptr->classic_end_iteration($2, $5, $1);
 				emitter_ptr->label($3);
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		}
 	|	REPEAT statement
@@ -313,17 +337,19 @@ statement:
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		}
 		UNTIL expression
 		{
 			try
 			{
-				emitter_ptr->until($1, $2);
+				emitter_ptr->until($1, $5);
 			}
 			catch(const std::exception& exc)
 			{
 				yyerror(exc);
+				YYABORT;
 			}
 		}
 	;
@@ -331,28 +357,31 @@ statement:
 inc_or_dec:
 	TO
 	{
-		$$ = static_cast<int>opcode::ADD;
+		$$ = static_cast<int>(opcode::ADD);
 	}
 	| DOWNTO
 	{
-		$$ = static_cast<int>opcode::SUB;
+		$$ = static_cast<int>(opcode::SUB);
 	}
 	;
 
 optional_else:
 	ELSE 
 	{
+		$1 = opt_else_helper;
 		try
 		{
-			emitter_ptr->label($$);
+			emitter_ptr->label($1);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	} statement ';'
 	| ';'
-	{
+	{	
+		$$ = opt_else_helper;
 		try
 		{
 			emitter_ptr->label($$);
@@ -360,6 +389,7 @@ optional_else:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	;
@@ -377,6 +407,7 @@ read:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 		emitter_ptr->end_parametric_expr();
 	}
@@ -395,6 +426,7 @@ write:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 		emitter_ptr->end_parametric_expr();
 	}
@@ -408,9 +440,10 @@ call:
 	}
 	| ID '(' 
 	{
-		$$ = $1;
 		emitter_ptr->begin_parametric_expr();
-	} expression_list ')'
+	} expression_list ')'{
+		$$ = $1;
+	}
 	;
 
 expression:
@@ -427,35 +460,10 @@ expression:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
-	;
-
-simple_expression:
-	term
-	| SIGN simple_expression
-	{
-		try
-		{
-			$$ = emitter_ptr->unary_op($1, $2);
-		}
-		catch(const std::exception& exc)
-		{
-			yyerror(exc);
-		}
-	}
-	| simple_expression SIGN simple_expression
-	{
-		try
-		{
-			$$ = emitter_ptr->binary_op($2, $1, $3);
-		}
-		catch(const std::exception& exc)
-		{
-			yyerror(exc);
-		}
-	}
-	| simple_expression or_else 
+	| simple_expression OR_ELSE
 	{
 		try
 		{
@@ -464,19 +472,37 @@ simple_expression:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	} simple_expression
 	{
 		try
 		{
-			$$ = emitter_ptr->or_else($2, $3)
+			$$ = emitter_ptr->or_else($2, $4);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
-	| simple_expression OR simple_expression
+	;
+
+simple_expression:
+	term
+	| SIGN term
+	{
+		try
+		{
+			$$ = emitter_ptr->unary_op($1, $2);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+			YYABORT;
+		}
+	}
+	| simple_expression addop term
 	{
 		try
 		{
@@ -485,13 +511,14 @@ simple_expression:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	;
 
 term:
 	factor
-	| term and_then
+	| term AND_THEN
 	{
 		try
 		{
@@ -500,19 +527,21 @@ term:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
-	} term
+	} factor
 	{
 		try
 		{
-			$$ = emitter_ptr->and_then($2, $3)
+			$$ = emitter_ptr->and_then($2, $4);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
-	| term mulop term
+	| term mulop factor
 	{	
 		try
 		{
@@ -521,6 +550,7 @@ term:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}	
 	}
 	;
@@ -535,13 +565,14 @@ factor:
 		try
 		{
 			auto optional_result = emitter_ptr->make_call($1, true);
-			$$ = optional_result->value_or(SymTable::NONE);
+			$$ = optional_result.value_or(SymTable::NONE);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
-		emitter->end_parametric_expr();
+		emitter_ptr->end_parametric_expr();
 	}
 	| NUM
 	| '(' expression ')'
@@ -554,6 +585,7 @@ factor:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	;
@@ -575,14 +607,12 @@ variable:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 
 		emitter_ptr->end_parametric_expr();
 	}
-	| ID '[' 
-	{
-		emitter_ptr->begin_parametric_expr();
-	} dim_exprs
+	| ID dim_exprs
 	{
 		try
 		{
@@ -591,6 +621,7 @@ variable:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 
 		emitter_ptr->end_parametric_expr();
@@ -598,23 +629,11 @@ variable:
 	;
 
 dim_exprs:
-	expression
+	'[' 
 	{
-		emitter_ptr->store_param($1);
-	} ']' dim_expr
-	| dim_comma_expr
-
-dim_expr:
-	dim_expr '[' expression
-	{
-		emitter_ptr->store_param($3);
-	} ']'
-	| %empty
-	;
-
-dim_comma_expr:
-	comma_expr ']'
-	;
+		emitter_ptr->begin_parametric_expr();
+	} comma_expr ']'
+	
 
 comma_expr:
 	expression
@@ -655,8 +674,8 @@ arg_decl:
 		try
 		{
 			auto data = emitter_ptr->get_params();
-			auto computed_type = $3;
-			std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
+			auto computed_type = $4;
+			std::for_each(data.crbegin(), data.crend(), [&computed_type](auto symbol_id){
 				symtab_ptr->update_var(symbol_id, computed_type, true);
 				emitter_ptr->store_param_on_stack(symbol_id);
 			});
@@ -665,6 +684,7 @@ arg_decl:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	| identifiers ':' type
@@ -673,7 +693,7 @@ arg_decl:
 		{
 			auto data = emitter_ptr->get_params();
 			auto computed_type = $3;
-			std::for_each(data.crbegin(), data.crend(), [symtab_ptr, emitter_ptr, computed_type](auto symbol_id){
+			std::for_each(data.crbegin(), data.crend(), [&computed_type](auto symbol_id){
 				symtab_ptr->update_var(symbol_id, computed_type);
 				emitter_ptr->store_param_on_stack(symbol_id);
 			});
@@ -682,6 +702,7 @@ arg_decl:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 	}
 	;
@@ -718,7 +739,8 @@ range:
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
-		}S
+			YYABORT;
+		}
 	}
 	;
 
@@ -735,23 +757,23 @@ type:
 	{
 		try
 		{
-			$$ = symtab_ptr->insert_array_type(emitter_ptr->get_params(), dtype($4))
+			auto data = emitter_ptr->get_params();
+			auto type = dtype($4);
+			$$ = symtab_ptr->insert_array_type(data, type);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
+			YYABORT;
 		}
 
 		emitter_ptr->end_parametric_expr();
 	}
 	;
 
-and_then:
-	AND THEN
-	;
-
-or_else:
-	OR ELSE
+addop:
+	OR
+	| SIGN
 	;
 
 mulop:
@@ -768,14 +790,12 @@ eof:
 	;
 %%
 
-void yyerror(std::exception& exc)
+void yyerror(const std::exception& exc)
 {
 	std::cerr << exc.what() << std::endl;
-	YYABORT;
 }
 
 void yyerror(const char* message)
 {
 	std::cerr << message << std::endl;
-	YYABORT;
 }

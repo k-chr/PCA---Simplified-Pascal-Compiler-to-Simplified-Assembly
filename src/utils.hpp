@@ -1,15 +1,23 @@
+#include <algorithm>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
-#include <vector>
 #include <iostream>
 
 template<typename N>
 std::string stringify(N const& val)
 {
 	std::stringstream ss;
-	ss << val;
+	ss << (val);
 	return ss.str();
+}
+
+template <typename S>
+std::string interpolate(const S &orig)
+{
+	std::string out(orig);
+	return out;
 }
 
 template <typename S, typename... Args>
@@ -17,12 +25,11 @@ std::string interpolate(const S &orig, const Args &...args)
 {
 	std::string out(orig);
 
-	auto va = {args...};
+	auto tup = std::make_tuple(args...);
 	
 	size_t i = 0;
-
-	for (auto &s : va) 
-	{
+	
+	std::apply([&i, &out](auto&& s...){
 		std::string is = std::to_string(i);
 		std::string t = "{" + is + "}";
 		try 
@@ -40,7 +47,8 @@ std::string interpolate(const S &orig, const Args &...args)
 		{
 			std::cerr << e.what() << std::endl;
 		}
-  }
+	}, tup);
+
 
   return out;
 }

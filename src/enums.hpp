@@ -171,7 +171,6 @@ inline std::ostream& operator<<(std::ostream& out, const entry e)
 	return out;
 }
 
-#ifndef YYTOKENTYPE
 #define YYTOKENTYPE
 enum token
 {                
@@ -199,10 +198,12 @@ enum token
 	WRITE,
 	READ,
     RELOP,
+	AND_THEN,
     MULOP,
     SIGN,
     ASSIGN,
 	AND,
+	OR_ELSE,
     OR,
     NOT,
     ID,
@@ -210,7 +211,7 @@ enum token
     NONE,
     DONE
 };
-#endif
+
 
 enum class opcode
 {

@@ -1,8 +1,11 @@
 #include "symbol.hpp"
 #include "compilerexception.hpp"
-#include <string>
+#include <algorithm>
+#include <map>
+#include <ostream>
 #include <vector>
 #include <map>
+
 
 extern int lineno;
 
@@ -37,14 +40,14 @@ class SymTable
 		void update_var(int, int, bool is_reference=false); //variable of id and type
 		void update_proc_or_fun(int, entry, std::vector<int>&, int type=SymTable::NONE);
 		void update_addresses(std::vector<int>&);
-		
+
 		int lookup(const std::string&);
 
 		void clear();
 
-		scope scope();
-		local_scope local_scope();
-		void set_local_scope(enum local_scope&);
+		scope get_scope();
+		local_scope get_local_scope();
+		void set_local_scope(enum local_scope);
 		void return_to_global_scope();
 		void leave_global_scope();
 

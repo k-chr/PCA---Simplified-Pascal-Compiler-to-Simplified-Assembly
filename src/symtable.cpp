@@ -1,12 +1,7 @@
 #include "symtable.hpp"
-#include <algorithm>
-#include <ios>
-#include <iterator>
+
 #include <iomanip>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <vector>
+#include <ios>
 
 const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
 	{"*", 		opcode::MUL},
@@ -59,14 +54,14 @@ std::string SymTable::keyword(const token token)
 	return SymTable::keywords.at(token);
 }
 
-scope SymTable::scope() 
+scope SymTable::get_scope() 
 {
 	return this->current_scope;
 }
 
-local_scope SymTable::local_scope()
+local_scope SymTable::get_local_scope()
 {
-	return this->scope() == scope::GLOBAL ? local_scope::UNBOUND : this->current_local_scope;
+	return this->get_scope() == scope::GLOBAL ? local_scope::UNBOUND : this->current_local_scope;
 }
 
 void SymTable::leave_global_scope()
@@ -75,9 +70,9 @@ void SymTable::leave_global_scope()
 		this->current_scope = scope::LOCAL;
 }
 
-void SymTable::set_local_scope(enum local_scope& value)
+void SymTable::set_local_scope(enum local_scope value)
 {
-	if(this->scope() == scope::LOCAL)
+	if(this->get_scope() == scope::LOCAL)
 	{
 		this->current_local_scope = value;
 	}
@@ -102,9 +97,9 @@ int SymTable::insert(const enum scope& scope, const std::string& name, const ent
 {
 	int id = this->symbols.size();
 	Symbol s = {
-					.scope=scope,
-					.entry=entry,
-					.dtype=dtype,
+					.m_scope=scope,
+					.m_entry=entry,
+					.m_dtype=dtype,
 					.name=name,
 					.is_reference = is_reference,
 					.symtab_id=id,
@@ -125,13 +120,13 @@ int SymTable::insert_constant(const std::string& literal, const dtype& dtype)
 		return id;
 	}
 
-	return this->insert(this->scope(), literal, entry::NUM, dtype);
+	return this->insert(this->get_scope(), literal, entry::NUM, dtype);
 }
 
 int SymTable::insert_temp(const dtype& type, bool is_reference)
 {
 	auto address = this->get_last_addr();
-	if (this->scope() == scope::LOCAL)
+	if (this->get_scope() == scope::LOCAL)
 	{
 		auto offset = 0;
 		if (is_reference) 
@@ -158,7 +153,7 @@ int SymTable::insert_temp(const dtype& type, bool is_reference)
 		address -= offset;
 	}
 
-	return this->insert(this->scope(), "$t" + std::to_string(this->locals++), entry::VAR, type, address, is_reference);
+	return this->insert(this->get_scope(), "$t" + std::to_string(this->locals++), entry::VAR, type, address, is_reference);
 }
 
 int SymTable::insert_by_token(const std::string& yytext, const token& op, const dtype dtype)
@@ -173,6 +168,8 @@ int SymTable::insert_by_token(const std::string& yytext, const token& op, const 
 	switch (op)
 	{
         case token::RELOP:
+		case token::AND_THEN:
+		case token::OR_ELSE:
         case token::MULOP:
         case token::SIGN:
         case token::ASSIGN:
@@ -211,7 +208,7 @@ int SymTable::insert_label(const std::string& label)
 
 	auto name = label + std::to_string(this->labels[label]);
 	this->labels[label]++;
-	return this->insert(this->scope(), name, entry::LABEL, dtype::NONE);
+	return this->insert(this->get_scope(), name, entry::LABEL, dtype::NONE);
 }
 
 int SymTable::insert_range(int start, int end)
@@ -219,7 +216,7 @@ int SymTable::insert_range(int start, int end)
 	auto start_sym = this->get(start);
 	auto end_sym = this->get(end);
 
-	if(start_sym.dtype == dtype::REAL or end_sym.dtype == dtype::REAL)
+	if(start_sym.m_dtype == dtype::REAL or end_sym.m_dtype == dtype::REAL)
 	{
 		throw CompilerException(interpolate("Syntax error. Range bound types are not (integer, integer) but got: ({0}, {1})", start_sym.type_to_str(), end_sym.type_to_str()), lineno);
 	}
@@ -237,7 +234,7 @@ int SymTable::insert_range(int start, int end)
 
 	auto op = (start <= end ? opcode::ADD : opcode::SUB);
 
-	return this->insert(this->scope(), name, entry::RNG, dtype::INT, static_cast<int>(op), false, start, end);
+	return this->insert(this->get_scope(), name, entry::RNG, dtype::INT, static_cast<int>(op), false, start, end);
 }
 
 int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
@@ -267,7 +264,7 @@ int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
 		return out_id + static_cast<int>(dtype::OBJECT);
 	}
 
-	auto id = this->insert(this->scope(), name, entry::TYPE, type, static_cast<int>(entry::ARR), false);
+	auto id = this->insert(this->get_scope(), name, entry::TYPE, type, static_cast<int>(entry::ARR), false);
 	auto& symbol = this->get(id);
 
 	symbol.args = symbols_vec;
@@ -288,7 +285,7 @@ int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
 
 	if(std::any_of(symbols_vec.cbegin(), symbols_vec.cend(), [](const auto& symbol)
 	{
-		return symbol.entry != entry::RNG or static_cast<opcode>(symbol.address) != opcode::ADD;
+		return symbol.m_entry != entry::RNG or static_cast<opcode>(symbol.address) != opcode::ADD;
 	}))
 	{
 		throw CompilerException("Syntax error. Expected ascending range in array definition.", lineno);
@@ -301,9 +298,9 @@ Symbol& SymTable::check_symbol(int id)
 {
 	auto& symbol = this->get(id);
 
-	if(symbol.scope != scope::UNBOUND)
+	if(symbol.m_scope != scope::UNBOUND)
 	{
-		throw CompilerException(interpolate("Syntax error. Redefinition of {0}: {1}", symbol.entry, symbol.name), lineno);
+		throw CompilerException(interpolate("Syntax error. Redefinition of {0}: {1}", symbol.m_entry, symbol.name), lineno);
 	}
 
 	return symbol;
@@ -313,7 +310,7 @@ void SymTable::update_var(int id, int type_id, bool is_reference)
 {
 	auto& symbol = this->check_symbol(id);
 	
-	symbol.scope = this->scope();
+	symbol.m_scope = this->get_scope();
 	symbol.is_reference = is_reference;
 	auto offset = static_cast<int>(dtype::OBJECT);
 
@@ -322,21 +319,21 @@ void SymTable::update_var(int id, int type_id, bool is_reference)
 		type_id -= offset;
 		auto arr_type = this->get(type_id);
 
-		if (arr_type.entry != entry::TYPE)
+		if (arr_type.m_entry != entry::TYPE)
 		{
-			throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", arr_type.entry), lineno);
+			throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", arr_type.m_entry), lineno);
 		}
 
-		symbol.dtype = arr_type.dtype;
+		symbol.m_dtype = arr_type.m_dtype;
 		symbol.args = {arr_type};
-		symbol.entry = static_cast<entry>(arr_type.address);
+		symbol.m_entry = static_cast<entry>(arr_type.address);
 		symbol.start_ind = arr_type.start_ind;
 		symbol.stop_ind = arr_type.stop_ind;
 	}
 	else
 	{
-		symbol.entry = entry::VAR;
-		symbol.dtype = dtype(type_id);
+		symbol.m_entry = entry::VAR;
+		symbol.m_dtype = dtype(type_id);
 	}
 }
 
@@ -361,9 +358,9 @@ void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& ar
 		throw CompilerException(interpolate("Unknown error. Expected FUNC or PROC, got {0}", entry_type), lineno);
 	}
 
-	symbol.entry = entry_type;
-	symbol.scope = scope::GLOBAL;
-	symbol.address = static_cast<int>(this->local_scope());
+	symbol.m_entry = entry_type;
+	symbol.m_scope = scope::GLOBAL;
+	symbol.address = static_cast<int>(this->get_local_scope());
 
 	if(type != SymTable::NONE)
 	{
@@ -374,26 +371,26 @@ void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& ar
 			auto type_id = type - offset;
 			auto type_sym = this->get(type_id);
 
-			if (type_sym.entry != entry::TYPE)
+			if (type_sym.m_entry != entry::TYPE)
 			{
-				throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", type_sym.entry), lineno);
+				throw CompilerException(interpolate("Unknown error, expected TYPE entry not: {0}", type_sym.m_entry), lineno);
 			}
 
 			auto& function_result = this->get(this->insert(scope::LOCAL, 
 														   symbol.name, 
 														   static_cast<entry>(type_sym.address), 
-														   type_sym.dtype, 
-														   static_cast<int>(this->local_scope()),
+														   type_sym.m_dtype, 
+														   static_cast<int>(this->get_local_scope()),
 														   true,
 														   type_sym.start_ind,
 														   type_sym.stop_ind));
 			function_result.args = {type_sym};
-			symbol.dtype = dtype::OBJECT;
+			symbol.m_dtype = dtype::OBJECT;
 		}
 		else 
 		{
-			symbol.dtype = static_cast<dtype>(type);
-			this->insert(scope::LOCAL, symbol.name, entry::VAR, static_cast<dtype>(type), static_cast<int>(this->local_scope()), true);
+			symbol.m_dtype = static_cast<dtype>(type);
+			this->insert(scope::LOCAL, symbol.name, entry::VAR, static_cast<dtype>(type), static_cast<int>(this->get_local_scope()), true);
 		}
 	}
 
@@ -405,12 +402,12 @@ int SymTable::lookup(const std::string& name)
 	const auto it =std::find_if(this->symbols.cbegin(), this->symbols.cend(), [&name, this](const Symbol& s)
 	{
 		return s.name == name and (
-			s.entry == entry::FUNC or 
-			s.entry == entry::RNG or 
-			s.entry == entry::PROC or 
-			s.entry == entry::OP or 
-			s.entry == entry::TYPE or
-			s.scope == this->scope()
+			s.m_entry == entry::FUNC or 
+			s.m_entry == entry::RNG or 
+			s.m_entry == entry::PROC or 
+			s.m_entry == entry::OP or 
+			s.m_entry == entry::TYPE or
+			s.m_scope == this->get_scope()
 		);
 	});
 
@@ -431,20 +428,20 @@ void SymTable::update(Symbol& sym)
 
 	this->symbols[sym.symtab_id].address = sym.address;
 	this->symbols[sym.symtab_id].args = sym.args;
-	this->symbols[sym.symtab_id].dtype = sym.dtype;
+	this->symbols[sym.symtab_id].m_dtype = sym.m_dtype;
 	this->symbols[sym.symtab_id].start_ind = sym.start_ind;
 	this->symbols[sym.symtab_id].stop_ind = sym.stop_ind;
-	this->symbols[sym.symtab_id].entry = sym.entry;
-	this->symbols[sym.symtab_id].scope = sym.scope;
+	this->symbols[sym.symtab_id].m_entry = sym.m_entry;
+	this->symbols[sym.symtab_id].m_scope = sym.m_scope;
 	this->symbols[sym.symtab_id].is_reference = sym.is_reference;
 	this->symbols[sym.symtab_id].name = sym.name;
 }
 
 dtype SymTable::infer_type(Symbol& first, Symbol& second)
 {
-	if (first.dtype == dtype::NONE or second.dtype == dtype::NONE) return dtype::NONE;
+	if (first.m_dtype == dtype::NONE or second.m_dtype == dtype::NONE) return dtype::NONE;
 
-	return first.dtype == second.dtype ? first.dtype : dtype::REAL;
+	return first.m_dtype == second.m_dtype ? first.m_dtype : dtype::REAL;
 }
 
 void SymTable::create_checkpoint()
@@ -466,18 +463,18 @@ int SymTable::get_last_addr()
 {
 	const auto it_to_last_sized = std::find_if(this->symbols.crbegin(), this->symbols.crend(), [](const Symbol& s)
 	{
-		return s.entry == entry::VAR or s.entry == entry::ARR;
+		return s.m_entry == entry::VAR or s.m_entry == entry::ARR;
 	});
 
 	int addr = 0;
 
 	if (it_to_last_sized != this->symbols.crend())
 	{
-		if (it_to_last_sized->scope == scope::GLOBAL)
+		if (it_to_last_sized->m_scope == scope::GLOBAL)
 		{
 			addr = it_to_last_sized->address + it_to_last_sized->size();
 		}
-		else if (it_to_last_sized->scope == scope::LOCAL and it_to_last_sized->address < 0)
+		else if (it_to_last_sized->m_scope == scope::LOCAL and it_to_last_sized->address < 0)
 		{
 			addr = it_to_last_sized->address - it_to_last_sized->size();
 		}

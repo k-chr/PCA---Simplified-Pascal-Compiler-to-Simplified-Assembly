@@ -3,6 +3,9 @@
 %option noyywrap
 %{
 	#include "global.hpp"
+	#include "parser.hpp"
+	#include <string>
+	extern YYSTYPE yylval;
 %}
 /* keywords and operators definitions */
 program		"program"
@@ -28,8 +31,10 @@ downto		"downto"
 in			"in"
 not			"not"
 mulop		"*"|"/"|"div"|"mod"
+and_then	"and"{space}"then"
 and 		"and"
 sign		"-"|"+"
+or_else		"or"{space}"else"
 or			"or"
 relop		"<>"|"<="|">="|"<"|">"|"="
 assign		":="
@@ -113,43 +118,51 @@ other		.
 				return token::IN;
 			}
 {not}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::NOT);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::NOT);
 				return token::NOT;
 			}
+{and_then}	{
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::AND_THEN);
+				return token::AND_THEN;
+			}
 {mulop}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::MULOP);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::MULOP);
 				return token::MULOP;
 			}
 {sign}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::SIGN);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::SIGN);
 				return token::SIGN;
 			}
+{or_else}	{
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::OR_ELSE);
+				return token::OR_ELSE;
+			}
 {or}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::OR);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::OR);
 				return token::OR;
 			}
 {and}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::AND);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::AND);
 				return token::AND;
 			}
 {relop}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::RELOP);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::RELOP);
 				return token::RELOP;
 			}
 {assign}	{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::ASSIGN);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::ASSIGN);
 				return token::ASSIGN;
 			}
 {id}		{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::ID);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::ID);
 				return token::ID;
 			}
 {digits}	{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::NUM, dtype::INT);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::NUM, dtype::INT);
 				return token::NUM;
 			}
 {floating}	{
-				*yylval = symtab_ptr->insert_by_token(yytext, token::NUM, dtype::REAL);
+				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::NUM, dtype::REAL);
 				return token::NUM;
 			}
 <<EOF>>		{

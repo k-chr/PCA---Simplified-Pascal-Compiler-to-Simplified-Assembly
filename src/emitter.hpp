@@ -1,17 +1,15 @@
 #include "symtable.hpp"
-#include <algorithm>
 #include <cmath>
-#include <ios>
-#include <map>
-#include <ostream>
-#include <iomanip>
-#include <sstream>
-#include <string>
-#include <type_traits>
 #include <optional>
 #include <stack>
+#include <memory>
+#include <sstream>
+#include <iostream>
+#include <map>
 #include <vector>
-#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <algorithm>
 
 extern int lineno;
 
@@ -55,7 +53,8 @@ class Emitter
 	public:
 		Emitter(std::ostream &output, 
 				const std::shared_ptr<SymTable> table): symtab_ptr(table), output(output) {};
-
+		Emitter(const Emitter& e):symtab_ptr(e.symtab_ptr), output(e.output) {};
+		
 		std::vector<int> get_params();
 		void clear_params();
 		void begin_parametric_expr();
@@ -92,7 +91,7 @@ class Emitter
 		void write()
 		{
 			auto data = this->params;
-			if(data.empty()) throw CompilerException(interpolate("Syntax error. Write procedure expects at least one argument."), lineno);
+			if(data.empty()) throw CompilerException("Syntax error. Write procedure expects at least one argument.", lineno);
 			std::for_each(data.cbegin(), data.cend(), [this](auto symbol_id){this->write(symbol_id);});
 		}
 
@@ -105,7 +104,7 @@ class Emitter
 		void read()
 		{
 			auto data = this->params;
-			if(data.empty()) throw CompilerException(interpolate("Syntax error. Read procedure expects at least one argument."), lineno);
+			if(data.empty()) throw CompilerException("Syntax error. Read procedure expects at least one argument.", lineno);
 			std::for_each(data.cbegin(), data.cend(), [this](auto symbol_id){this->read(symbol_id);});
 		}
 

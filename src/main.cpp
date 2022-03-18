@@ -1,12 +1,13 @@
 #include "global.hpp"
-#include <iostream>
 #include <memory>
-#include <tuple>
+#include <utility>
+#include <cstdlib>
+#include <iostream>
 
 int lineno = 0;
 std::shared_ptr<Emitter> emitter_ptr;
 std::shared_ptr<SymTable> symtab_ptr;
-std::FILE* yyin;
+
 
 std::tuple<std::string, std::string> parse_args(int argc, char* argv[])
 {
