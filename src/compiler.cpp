@@ -29,7 +29,7 @@ std::shared_ptr<Emitter> Compiler::share_emitter()
 	return std::make_shared<Emitter>((this->emitter));
 }
 
-const std::FILE* Compiler::get_istream() const
+std::FILE* Compiler::get_istream() const
 {
 	return this->input;
 }

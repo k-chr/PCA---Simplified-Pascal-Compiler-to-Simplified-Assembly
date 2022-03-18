@@ -14,3 +14,4 @@ extern void yyerror(std::exception& e);
 extern int lineno;
 extern std::shared_ptr<SymTable> symtab_ptr;
 extern std::shared_ptr<Emitter> emitter_ptr;
+extern std::FILE* yyin;

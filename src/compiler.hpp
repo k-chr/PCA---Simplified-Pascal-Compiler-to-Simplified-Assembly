@@ -44,5 +44,5 @@ class Compiler
 			}
 		}
 
-		const std::FILE* get_istream() const;
+		std::FILE* get_istream() const;
 };
