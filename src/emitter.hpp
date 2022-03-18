@@ -88,7 +88,7 @@ class Emitter
 		void classic_end_iteration(int, int, int);
 		int repeat();
 		void until(int, int);
-		
+
 		void write()
 		{
 			auto data = this->params;

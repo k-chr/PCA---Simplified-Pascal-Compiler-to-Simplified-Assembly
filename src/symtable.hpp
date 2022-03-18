@@ -37,6 +37,7 @@ class SymTable
 		void update_var(int, int, bool is_reference=false); //variable of id and type
 		void update_proc_or_fun(int, entry, std::vector<int>&, int type=SymTable::NONE);
 		void update_addresses(std::vector<int>&);
+		
 		int lookup(const std::string&);
 
 		void clear();

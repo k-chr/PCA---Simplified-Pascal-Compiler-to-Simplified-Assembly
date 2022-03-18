@@ -2,11 +2,11 @@
 #include <exception>
 #include <memory>
 
-//gen/lexer
+//lexer
 int yylex();
 int yylex_destroy();
 
-//gen/parser
+//parser
 int yyparse();
 extern void yyerror(char const* s);
 extern void yyerror(std::exception& e);
