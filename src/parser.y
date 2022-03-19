@@ -13,7 +13,7 @@
 
 %output "parser.cpp"
 %verbose
-
+%define parse.error verbose
 
 %union	{
 	int int_val;
@@ -152,7 +152,7 @@ header:
 		auto data = emitter_ptr->get_params();
 		try
 		{
-			symtab_ptr->update_proc_or_fun($2, entry::PROC, data, $6);
+			symtab_ptr->update_proc_or_fun($2, entry::FUNC, data, $6);
 		}
 		catch(const std::exception& exc)
 		{
@@ -202,11 +202,24 @@ statement_list:
 	;
 
 statement:
-	variable ASSIGN expression
+	variable 
+	{
+		try
+		{
+			$1 = emitter_ptr->variable_or_call($1, true);
+			emitter_ptr->end_parametric_expr();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+			YYABORT;
+		}
+
+	} ASSIGN expression
 	{	
 		try
 		{
-			emitter_ptr->assign($1, $3);
+			emitter_ptr->assign($1, $4);
 		}
 		catch(const std::exception& exc)
 		{
@@ -257,6 +270,20 @@ statement:
 		}
 	  	optional_else
 		{
+
+			if($7 != opt_else_helper)
+			{		
+				try
+				{
+					emitter_ptr->label(opt_else_helper);
+				}
+				catch(const std::exception& exc)
+				{
+					yyerror(exc);
+					YYABORT;
+				}
+			}
+
 			try
 			{
 				emitter_ptr->label($5);
@@ -304,11 +331,23 @@ statement:
 		{
 
 		}
-	|	FOR variable ASSIGN expression inc_or_dec expression
+	|	FOR variable 
 		{
 			try
 			{
-				std::tie($1, $3) = emitter_ptr->classic_for_statement($2, $4, $5, $6);
+				$2 = emitter_ptr->variable_or_call($2, true);
+				emitter_ptr->end_parametric_expr();
+			}
+			catch(const std::exception& exc)
+			{
+				yyerror(exc);
+				YYABORT;
+			}
+		} ASSIGN expression inc_or_dec expression
+		{
+			try
+			{
+				std::tie($1, $4) = emitter_ptr->classic_for_statement($2, $5, $6, $7);
 			}
 			catch(const std::exception& exc)
 			{
@@ -319,8 +358,8 @@ statement:
 		{
 			try
 			{
-				emitter_ptr->classic_end_iteration($2, $5, $1);
-				emitter_ptr->label($3);
+				emitter_ptr->classic_end_iteration($2, $6, $1);
+				emitter_ptr->label($4);
 			}
 			catch(const std::exception& exc)
 			{
@@ -368,30 +407,20 @@ inc_or_dec:
 optional_else:
 	ELSE 
 	{
-		$1 = opt_else_helper;
 		try
 		{
-			emitter_ptr->label($1);
+			emitter_ptr->label(opt_else_helper);
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
 			YYABORT;
 		}
-	} statement ';'
-	| ';'
-	{	
+	} statement 
+	{
 		$$ = opt_else_helper;
-		try
-		{
-			emitter_ptr->label($$);
-		}
-		catch(const std::exception& exc)
-		{
-			yyerror(exc);
-			YYABORT;
-		}
 	}
+	| %empty
 	;
 
 read:
@@ -441,7 +470,8 @@ call:
 	| ID '(' 
 	{
 		emitter_ptr->begin_parametric_expr();
-	} expression_list ')'{
+	} expression_list ')'
+	{
 		$$ = $1;
 	}
 	;
@@ -556,7 +586,19 @@ term:
 	;
 
 factor:
-	variable
+	variable 
+	{
+		try
+		{
+			$1 = emitter_ptr->variable_or_call($1);
+			emitter_ptr->end_parametric_expr();
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+			YYABORT;
+		}
+	}
 	| ID '(' 
 	{
 		emitter_ptr->begin_parametric_expr();	
@@ -602,29 +644,25 @@ variable:
 
 		try
 		{
-			$$ = emitter_ptr->variable_or_call($1);
+			$$ = symtab_ptr->check_symbol($1, true).symtab_id;
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
 			YYABORT;
 		}
-
-		emitter_ptr->end_parametric_expr();
 	}
 	| ID dim_exprs
 	{
 		try
 		{
-			$$ = emitter_ptr->get_item($1);
+			$$ = symtab_ptr->check_symbol($1, true).symtab_id;
 		}
 		catch(const std::exception& exc)
 		{
 			yyerror(exc);
 			YYABORT;
 		}
-
-		emitter_ptr->end_parametric_expr();
 	}
 	;
 

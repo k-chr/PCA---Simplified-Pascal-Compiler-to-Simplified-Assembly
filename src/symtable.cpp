@@ -1,7 +1,9 @@
 #include "symtable.hpp"
 
+#include <algorithm>
 #include <iomanip>
 #include <ios>
+#include <iterator>
 
 const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
 	{"*", 		opcode::MUL},
@@ -294,13 +296,21 @@ int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
 	return this->insert_array_type(symbols_vec, type);	
 }
 
-Symbol& SymTable::check_symbol(int id)
+Symbol& SymTable::check_symbol(int id, bool should_exist)
 {
 	auto& symbol = this->get(id);
+	auto test = should_exist ? symbol.m_scope == scope::UNBOUND : symbol.m_scope != scope::UNBOUND;
 
-	if(symbol.m_scope != scope::UNBOUND)
+	if(test)
 	{
-		throw CompilerException(interpolate("Syntax error. Redefinition of {0}: {1}", symbol.m_entry, symbol.name), lineno);
+		if(not should_exist)
+		{
+			throw CompilerException(interpolate("Syntax error. Redefinition of {0}: {1}", symbol.m_entry, symbol.name), lineno);
+		}
+		else
+		{
+			throw CompilerException(interpolate("Syntax error. Access to unbounded identifier: {0}", symbol.name), lineno);
+		}
 	}
 
 	return symbol;
@@ -335,6 +345,8 @@ void SymTable::update_var(int id, int type_id, bool is_reference)
 		symbol.m_entry = entry::VAR;
 		symbol.m_dtype = dtype(type_id);
 	}
+
+	this->update(symbol);
 }
 
 void SymTable::update_addresses(std::vector<int>& args)
@@ -342,12 +354,12 @@ void SymTable::update_addresses(std::vector<int>& args)
 	std::vector<Symbol> arg_symbols;
 	std::transform(args.crbegin(), args.crend(), std::inserter(arg_symbols, arg_symbols.begin()), [this](auto sym_id){return this->get(sym_id);});
 
-	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this](auto& sym)
+	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this](Symbol& sym)
 	{
 		sym.address = this->get_last_addr();
+		this->update(sym);
 	});
 }
-
 
 void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& args, int type)
 {
@@ -364,7 +376,7 @@ void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& ar
 
 	if(type != SymTable::NONE)
 	{
-		
+		auto result_name = interpolate("${0}_result", symbol.name);
 		auto offset = static_cast<int>(dtype::OBJECT);
 		if (type >= offset)
 		{
@@ -377,7 +389,7 @@ void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& ar
 			}
 
 			auto& function_result = this->get(this->insert(scope::LOCAL, 
-														   symbol.name, 
+														   result_name, 
 														   static_cast<entry>(type_sym.address), 
 														   type_sym.m_dtype, 
 														   static_cast<int>(this->get_local_scope()),
@@ -390,11 +402,26 @@ void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& ar
 		else 
 		{
 			symbol.m_dtype = static_cast<dtype>(type);
-			this->insert(scope::LOCAL, symbol.name, entry::VAR, static_cast<dtype>(type), static_cast<int>(this->get_local_scope()), true);
+			this->insert(scope::LOCAL, result_name, entry::VAR, static_cast<dtype>(type), static_cast<int>(this->get_local_scope()), true);
 		}
 	}
+	std::vector<Symbol> map_symbols;
+	std::transform(args.crbegin(), args.crend(), std::back_inserter(map_symbols), [this](auto id)
+	{
+		return this->get(id);
+	});
+
+	symbol.args = map_symbols;
+
+	std::for_each(args.crbegin(), args.crend(), [this](auto id)
+	{
+		Symbol& obj = this->get(id);
+		obj.is_reference = true;
+		this->update(obj);
+	});
 
 	this->update_addresses(args);
+	this->update(symbol);
 }
 
 int SymTable::lookup(const std::string& name)
@@ -416,6 +443,10 @@ int SymTable::lookup(const std::string& name)
 
 Symbol& SymTable::get(const int id)
 {
+	if (id <= SymTable::NONE)
+	{
+		throw CompilerException(interpolate("Internal error. Invalid data access {0}", id), lineno);
+	}
 	return this->symbols[id];
 }
 
@@ -470,7 +501,7 @@ int SymTable::get_last_addr()
 
 	if (it_to_last_sized != this->symbols.crend())
 	{
-		if (it_to_last_sized->m_scope == scope::GLOBAL)
+		if (it_to_last_sized->m_scope == scope::GLOBAL and it_to_last_sized->address > 0)
 		{
 			addr = it_to_last_sized->address + it_to_last_sized->size();
 		}

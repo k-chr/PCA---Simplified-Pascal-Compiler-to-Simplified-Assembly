@@ -1,10 +1,10 @@
 
-flags = -std=c++17 -pedantic
+flags = -std=c++17 -Wall -g -fsanitize=address
 objects = symbol.o symtable.o emitter.o compiler.o parser.o lexer.o main.o 
 all = $(objects) pca lexer.cpp parser.hpp parser.cpp
 
 pca: $(objects)
-	g++  $(flags) -o pca $(objects) -lfl -g
+	g++ $(flags) -o pca $(objects) -lfl 
 
 lexer.cpp: lexer.l parser.hpp
 	flex lexer.l

@@ -20,9 +20,9 @@ class SymTable
 		local_scope current_local_scope = local_scope::UNBOUND;
 		const static std::map<std::string, opcode> relops_mulops_signops;
 		const static std::map<token, std::string> keywords;
-		Symbol& check_symbol(int);
 		
 	public:
+		Symbol& check_symbol(int, bool=false);
 		std::string keyword(const token);
 		Symbol& get(const int);
 		void update(Symbol&);

@@ -11,9 +11,9 @@ class Compiler
 	private:
 		std::string file_name;
 		std::string output_file_name;
+		std::ofstream output;
 		Emitter emitter;
 		SymTable symtable;
-		std::ofstream output;
 		std::FILE* input;
 		int parse_result = 0;
 	
@@ -21,11 +21,11 @@ class Compiler
 		std::shared_ptr<SymTable> share_table();
 		std::shared_ptr<Emitter> share_emitter();
 		void compile();
-		Compiler(std::string file_name, std::string output_file_name="out.asm"): symtable(), 
+		Compiler(std::string file_name, std::string output_file_name="out.asm"):
 																	   file_name(file_name),
 																	   output_file_name(output_file_name), 
 																	   output(output_file_name),
-																	   emitter(output, share_table())
+																	   emitter(output)
 		{
 			if(not this->output.is_open())
 			{

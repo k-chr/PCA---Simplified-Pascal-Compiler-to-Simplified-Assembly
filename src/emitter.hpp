@@ -12,12 +12,12 @@
 #include <algorithm>
 
 extern int lineno;
+extern std::shared_ptr<SymTable> symtab_ptr;
 
 class Emitter
 {		
 	private:
 		const static std::map<opcode, std::string> mnemonics;
-		const std::shared_ptr<SymTable> symtab_ptr;
 		std::ostream &output;
 		std::stringstream mem;
 		std::stringstream temp_mem;
@@ -51,10 +51,10 @@ class Emitter
 		void commit_subprogram();
 
 	public:
-		Emitter(std::ostream &output, 
-				const std::shared_ptr<SymTable> table): symtab_ptr(table), output(output) {};
-		Emitter(const Emitter& e):symtab_ptr(e.symtab_ptr), output(e.output) {};
-		
+		Emitter();
+		Emitter(std::ostream &output): output(output) {};
+		Emitter(const Emitter& e): output(e.output) {};
+
 		std::vector<int> get_params();
 		void clear_params();
 		void begin_parametric_expr();
@@ -71,7 +71,7 @@ class Emitter
 		int and_then(int, int);
 		int or_else(int, int);
 		int get_item(int);
-		int variable_or_call(int);
+		int variable_or_call(int, bool=false);
 		void jump(int);
 		void assign(int, int);
 		std::optional<int> make_call(int, bool result_required=false);
