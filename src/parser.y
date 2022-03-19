@@ -297,11 +297,14 @@ statement:
 				YYABORT;
 			}
 		}
-	| 	WHILE expression
+	| 	WHILE 
+		{
+			$1 = emitter_ptr->begin_while();
+		} expression
 		{
 			try
 			{
-				std::tie($1, $2) = emitter_ptr->while_statement($2);
+				$3 = emitter_ptr->while_statement($3);
 			}
 			catch(const std::exception& exc)
 			{
@@ -314,7 +317,7 @@ statement:
 			try
 			{
 				emitter_ptr->jump($1);
-				emitter_ptr->label($2);
+				emitter_ptr->label($3);
 			}
 			catch(const std::exception& exc)
 			{
@@ -370,7 +373,7 @@ statement:
 				YYABORT;
 			}
 		}
-	|	REPEAT statement
+	|	REPEAT 
 		{
 			try
 			{
@@ -381,8 +384,7 @@ statement:
 				yyerror(exc);
 				YYABORT;
 			}
-		}
-		UNTIL expression
+		} statement	UNTIL expression
 		{
 			try
 			{
@@ -523,6 +525,9 @@ expression:
 
 simple_expression:
 	term
+	{
+		$$ = $1;
+	}
 	| SIGN term
 	{
 		try
@@ -551,6 +556,9 @@ simple_expression:
 
 term:
 	factor
+	{
+		$$ = $1;
+	}
 	| term AND_THEN
 	{
 		try
@@ -593,7 +601,7 @@ factor:
 	{
 		try
 		{
-			$1 = emitter_ptr->variable_or_call($1);
+			$$ = emitter_ptr->variable_or_call($1);
 			emitter_ptr->end_parametric_expr();
 		}
 		catch(const std::exception& exc)
@@ -620,6 +628,9 @@ factor:
 		emitter_ptr->end_parametric_expr();
 	}
 	| NUM
+	{
+		$$ = $1;
+	}
 	| '(' expression ')'
 	{
 		$$ = $2;
@@ -841,5 +852,5 @@ void yyerror(const std::exception& exc)
 
 void yyerror(const char* message)
 {
-	std::cerr << message << std::endl;
+	std::cerr << message << ".\tAt line: " << lineno << std::endl;
 }

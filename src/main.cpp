@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
 
 	try
 	{
-		auto compiler = out.empty() ? Compiler(in) : Compiler(out);
+		auto compiler = out.empty() ? Compiler(in) : Compiler(in, out);
 
 		emitter_ptr = compiler.share_emitter();
 		symtab_ptr = compiler.share_table();

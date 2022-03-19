@@ -42,7 +42,7 @@ relop		"<>"|"<="|">="|"<"|">"|"="
 assign		":="
 /* regex definitions */
 space		[ \t]
-newline		[\n]
+newline		[\r]?[\n]
 blank		{space}+
 digit		[0-9]
 digits		{digit}+

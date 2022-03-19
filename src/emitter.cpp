@@ -411,17 +411,23 @@ int Emitter::if_statement(int expression_id)
 	return else_label.symtab_id;
 }
 
-std::tuple<int, int> Emitter::while_statement(int expression_id)
+int Emitter::begin_while()
+{
+	auto while_label = symtab_ptr->get(symtab_ptr->insert_label("while"));
+	this->label(while_label);
+	return while_label.symtab_id;
+}
+
+int Emitter::while_statement(int expression_id)
 {
 	auto expression = symtab_ptr->get(expression_id);
-	auto while_label = symtab_ptr->get(symtab_ptr->insert_label("while"));
+	
 	auto else_label = symtab_ptr->get(symtab_ptr->insert_label("endwhile"));
 	auto zero = symtab_ptr->get(symtab_ptr->insert_constant("0", expression.m_dtype));
 
-	this->label(while_label);
 	this->jump_if(expression, zero, else_label);
 
-	return {while_label.symtab_id, else_label.symtab_id};
+	return else_label.symtab_id;
 }
 
 std::tuple<int, int> Emitter::classic_for_statement(int variable_id, int init_value_id, int dec_or_inc, int control_value)

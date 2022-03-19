@@ -82,7 +82,8 @@ class Emitter
 		int cast(int, dtype&);
 		int if_statement(int);
 		int end_if();
-		std::tuple<int, int> while_statement(int);
+		int begin_while();
+		int while_statement(int);
 		std::tuple<int, int> classic_for_statement(int, int, int, int);
 		void classic_end_iteration(int, int, int);
 		int repeat();
