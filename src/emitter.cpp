@@ -277,20 +277,14 @@ int Emitter::boolean_negate(Symbol& symbol)
 
 int Emitter::unary_op(int op_id, int operand_id)
 {
-	auto op_symbol= symtab_ptr->get(op_id); 
 	auto symbol = symtab_ptr->get(operand_id);
-
-	if(op_symbol.m_entry != entry::OP)
-	{
-		throw CompilerException("Unknown error.", lineno);
-	}
 	
 	if(symbol.m_entry != entry::VAR and symbol.m_entry != entry::NUM)
 	{
 		throw CompilerException("Syntax error. Variable or numeric constant expected as a operand.", lineno);
 	}
 
-	auto opcd = static_cast<opcode>(op_symbol.address);
+	auto opcd = static_cast<opcode>(op_id);
 
 	switch (opcd) 
 	{
@@ -300,7 +294,7 @@ int Emitter::unary_op(int op_id, int operand_id)
 			return this->negate(symbol);
 		case opcode::NOT:
 			return this->boolean_negate(symbol);
-		default: throw CompilerException(interpolate("Invalid operation: {0} is not unary operator", op_symbol.name), lineno);
+		default: throw CompilerException(interpolate("Invalid operation: {0} is not unary operator", opcd), lineno);
 	}
 }
 
@@ -344,16 +338,17 @@ void Emitter::enter(int stack_size)
 	this->emit_to_stream("\t\t", enter_mnemonic + this->get_type_str(dtype::INT), interpolate(";\t{0}\t{1}", enter_mnemonic, stack_size), "#" + std::to_string(stack_size));
 }
 
-void Emitter::end_current_subprogram()
+void Emitter::end_current_subprogram(int id)
 {
 	auto stack_size = std::abs(symtab_ptr->get_last_addr());
 
+	std::cout << *(symtab_ptr);
+
 	this->leave_subprogram();
 	symtab_ptr->return_to_global_scope();
+	this->label(id);
 	this->enter(stack_size);
 	this->commit_subprogram();
-
-	std::cout << *(symtab_ptr);
 
 	symtab_ptr->restore_checkpoint();
 }
@@ -366,6 +361,7 @@ void Emitter::end_program()
 	}
 	
 	this->emit_to_stream("\t\t", this->mnemonics.at(opcode::EXIT), ";\texit.");
+	std::cout << *symtab_ptr << std::endl;
 }
 
 void Emitter::label(int label_id)
@@ -513,7 +509,7 @@ void Emitter::label(Symbol& symbol)
 		return this->emit_to_stream(interpolate("{0}:", symbol.name), "", "");
 	}
 
-	throw CompilerException("Unknown error.", lineno);
+	throw CompilerException(interpolate("Unknown error [label]. Expected LABEL, PROC or FUNC got: {0}", symbol.m_entry), lineno);
 }
 
 void Emitter::push(Symbol& symbol)
@@ -576,9 +572,9 @@ std::optional<int> Emitter::make_call(int proc_or_fun, bool result_required)
 	const auto& entry_descriptor = [](entry& e){
 		switch(e)
 		{
-            case entry::VAR: return "Scalar variable";
-            case entry::ARR: return "Array variable";
-            default: return "";
+            case entry::VAR: return std::string("Scalar variable");
+            case entry::ARR: return std::string("Array variable");
+            default: return stringify(e);
         }
 	};
 
@@ -599,7 +595,7 @@ std::optional<int> Emitter::make_call(int proc_or_fun, bool result_required)
 		throw CompilerException(interpolate("Syntax error. {0} is not a function", proc_or_fun_sym.name), lineno);
 	}
 
-	for (auto i = 0ull; i < signature.size(); ++i)
+	for (int i = signature.size() -1; i >= 0; --i)
 	{
 		auto sig_symbol = signature[i];
 		auto arg_symbol = symtab_ptr->get(args[i]);
@@ -682,7 +678,7 @@ int Emitter::left_eval_and_or(int lval_label, int rval, bool or_op)
 
 	if (eval_lval_only.m_entry != entry::LABEL)
 	{
-		throw CompilerException("Unknown error. Expected entry::LABEL", lineno);
+		throw CompilerException(interpolate("Unknown error [left_eval_and_or]. Expected entry::LABEL, got {0}", eval_lval_only.m_entry), lineno);
 	}
 
 	auto symbol = symtab_ptr->get(rval);
@@ -694,7 +690,7 @@ int Emitter::left_eval_and_or(int lval_label, int rval, bool or_op)
 
 	if (symbol.m_entry != entry::VAR and symbol.m_entry != entry::NUM)
 	{
-		throw CompilerException("Unknown error.", lineno);
+		throw CompilerException(interpolate("Unknown error [left_eval_and_or]. Expected VAR or NUM got: {0}", symbol.m_entry), lineno);
 	}
 
 	auto temp_lval = symtab_ptr->get(symtab_ptr->insert_temp(dtype::INT));
@@ -756,7 +752,7 @@ int Emitter::andorop(opcode opcd, Symbol& first, Symbol& second, Symbol* result)
 
 	auto op = mnemonic + this->get_type_str(type);
 
-	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", op, first.name, second.name, temp.name), 
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", mnemonic, first.name, second.name, temp.name), 
 						 first.addr_to_str(true), second.addr_to_str(true), temp.addr_to_str(true));
 
 	return temp.symtab_id;
@@ -773,7 +769,7 @@ void Emitter::write(int symbol_id)
         case entry::NUM:
 		{
 			std::string op = mnemonic + this->get_type_str(symbol.m_dtype);
-			this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, symbol.name), symbol.addr_to_str(true));
+			this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", mnemonic, symbol.name), symbol.addr_to_str(true));
 			break;
 		}
 		
@@ -781,8 +777,6 @@ void Emitter::write(int symbol_id)
 			throw CompilerException("No matching overload of write procedure for Array type", lineno);
 		case entry::RNG:
 			throw CompilerException(interpolate("Syntax error, expected constant or variable identifier, got a range object: {0}..{1}", symbol.start_ind, symbol.stop_ind), lineno);
-        case entry::OP:
-			throw CompilerException(interpolate("Syntax error, expected constant or variable identifier, got an operator: {0}", symbol.name), lineno);
         default:
         	throw CompilerException("Unknown error", lineno);
     }
@@ -797,7 +791,7 @@ void Emitter::read(int symbol_id)
         case entry::VAR:
 		{
 			std::string op = mnemonic + this->get_type_str(symbol.m_dtype);
-			this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, symbol.name), symbol.addr_to_str(true));
+			this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", mnemonic, symbol.name), symbol.addr_to_str(true));
 			break;
 		}
         case entry::NUM:
@@ -806,8 +800,6 @@ void Emitter::read(int symbol_id)
 			throw CompilerException("No matching overload of read procedure for Array type", lineno);
 		case entry::RNG:
 			throw CompilerException(interpolate("Syntax error, expected variable identifier, got a range object: {0}..{1}", symbol.start_ind, symbol.stop_ind), lineno);
-        case entry::OP:
-			throw CompilerException(interpolate("Syntax error, expected variable identifier, got an operator: {0}", symbol.name), lineno);
         default:
         	throw CompilerException("Unknown error", lineno);
     }
@@ -830,9 +822,10 @@ void Emitter::assign(Symbol& lval_sym, Symbol& rval_sym)
 		rval_sym = symtab_ptr->get(this->cast(rval_sym, lval_sym.m_dtype));
 	}
 
-	auto op = this->mnemonics.at(opcode::MOV) + this->get_type_str(lval_sym.m_dtype);
+	auto mnemonic = this->mnemonics.at(opcode::MOV);
+	auto op = mnemonic + this->get_type_str(lval_sym.m_dtype);
 
-	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}\t{2}", op, this->mnemonics.at(opcode::MOV), rval_sym.name, lval_sym.name), rval_sym.addr_to_str(true), lval_sym.addr_to_str(true));
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}", mnemonic, rval_sym.name, lval_sym.name), rval_sym.addr_to_str(true), lval_sym.addr_to_str(true));
 }
 
 void Emitter::assign(int lval, int rval)
@@ -853,12 +846,13 @@ void Emitter::jump(Symbol& label)
 {
 	if (label.m_entry != entry::LABEL and label.m_entry != entry::FUNC and label.m_entry != entry::PROC)
 	{
-		throw CompilerException("Unknown error.", lineno);
+		throw CompilerException(interpolate("Unknown error [jump]. Expected LABEL, PROC or FUNC, got: {0}", label.m_entry), lineno);
 	}
 
-	auto op = this->mnemonics.at(opcode::JMP) + ".i";
+	auto& mnemonic = this->mnemonics.at(opcode::JMP);
+	auto op = mnemonic + ".i";
 
-	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", op, label.name), label.addr_to_str());
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}", mnemonic, label.name), label.addr_to_str());
 }
 
 int Emitter::relop(opcode op_code, Symbol& first, Symbol& second, Symbol* result)
@@ -868,7 +862,7 @@ int Emitter::relop(opcode op_code, Symbol& first, Symbol& second, Symbol* result
 		) and (
 			second.m_entry == entry::NUM or second.m_entry == entry::VAR
 		)
-	)) throw CompilerException("Unknown error.", lineno);
+	)) throw CompilerException(interpolate("Unknown error [relop]. Expected (NUM|VAR, NUM|VAR), got: ({0}, {1})", first.m_entry, second.m_entry), lineno);
 
 	auto op_type = symtab_ptr->infer_type(first, second);
 	auto type = dtype::INT;
@@ -899,8 +893,7 @@ int Emitter::binop(opcode op_code, Symbol& first, Symbol& second, Symbol* result
 		) and (
 			second.m_entry == entry::NUM or second.m_entry == entry::VAR
 		)
-	)) throw CompilerException("Unknown error.", lineno);
-
+	)) throw CompilerException(interpolate("Unknown error [binop]. Expected (NUM|VAR, NUM|VAR), got: ({0}, {1})", first.m_entry, second.m_entry), lineno);
 
 	auto type = symtab_ptr->infer_type(first, second);
 	
@@ -915,9 +908,10 @@ int Emitter::binop(opcode op_code, Symbol& first, Symbol& second, Symbol* result
 	}
 	
 	auto temp = result == nullptr ? symtab_ptr->get(symtab_ptr->insert_temp(type)) : *result;
-	auto op = this->mnemonics.at(op_code) + this->get_type_str(type);
+	auto& mnemonic = this->mnemonics.at(op_code);
+	auto op = mnemonic + this->get_type_str(type);
 
-	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", op, first.name, second.name, temp.name), 
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}, {3}", mnemonic, first.name, second.name, temp.name), 
 						 first.addr_to_str(true), second.addr_to_str(true), temp.addr_to_str(true));
 
 	return temp.symtab_id;
@@ -927,23 +921,12 @@ int Emitter::binary_op(int op_id, int operand1, int operand2)
 {	
 	auto first = symtab_ptr->get(operand1);
 	auto second = symtab_ptr->get(operand2);
-	auto op_symbol= symtab_ptr->get(op_id); 
 
-	if(op_symbol.m_entry != entry::OP)
-	{
-		throw CompilerException("Unknown error.", lineno);
-	}
-
-	auto op_code = opcode(op_symbol.address);
+	auto op_code = opcode(op_id);
 
 	if (first.m_entry == entry::ARR or second.m_entry == entry::ARR)
 	{
 		throw CompilerException(interpolate("No matching overload of {0} for Array type.", this->mnemonics.at(op_code)), lineno);
-	}
-
-	if ((first.m_entry != entry::VAR and first.m_entry != entry::NUM) or (second.m_entry != entry::VAR and second.m_entry != entry::NUM))
-	{
-		throw CompilerException("Unknown error.", lineno);
 	}
 
 	switch (op_code) 
@@ -964,7 +947,7 @@ int Emitter::binary_op(int op_id, int operand1, int operand2)
 		case opcode::GT:
 		case opcode::EQ:
 			return relop(op_code, first, second);
-		default: throw CompilerException(interpolate("Invalid operation: {0} is not binary operator", op_symbol.name), lineno);
+		default: throw CompilerException(interpolate("Invalid operation: {0} is not binary operator", op_code), lineno);
 	}
 }
 
@@ -975,9 +958,9 @@ int Emitter::cast(Symbol& symbol, dtype& to)
 		throw CompilerException("Cannot perform type cast for Array type", lineno);
 	}
 
-	if (symbol.m_entry != entry::VAR)
+	if (symbol.m_entry != entry::VAR and symbol.m_entry != entry::NUM)
 	{
-		throw CompilerException("Unknown error.", lineno);
+		throw CompilerException(interpolate("Unknown error [cast]. Expected VAR or NUM got: {0}", symbol.m_entry), lineno);
 	}
 
 	if (symbol.m_dtype == to) return symbol.symtab_id;
@@ -1001,13 +984,13 @@ int Emitter::cast(Symbol& symbol, dtype& to)
 
 	if (opcd == opcode::NOP)
 	{
-		throw CompilerException("Unknown error.", lineno);
+		throw CompilerException(interpolate("Unknown error [cast]. {0}", opcd), lineno);
 	}
 	
 	auto return_id = symtab_ptr->insert_temp(to);
 	auto temp = symtab_ptr->get(return_id);
 	auto& mnemonic = this->mnemonics.at(opcd);
-	auto op = mnemonic + this->get_type_str(to);
+	auto op = mnemonic + this->get_type_str(symbol.m_dtype);
 
 	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t{1}, {2}", op, symbol.name, temp.name), symbol.addr_to_str(true), temp.addr_to_str(true));
 
@@ -1029,7 +1012,7 @@ int Emitter::begin_left_eval_or_and(opcode opcd, int lval)
 {
 	if (opcd != opcode::EQ and opcd != opcode::NE)
 	{
-		throw CompilerException("Unknown error.", lineno);
+		throw CompilerException(interpolate("Unknown error [begin_left_eval_only]. Expected EQ or NE got: {0}", opcd), lineno);
 	}
 
 	auto& symbol = symtab_ptr->get(lval);
@@ -1041,7 +1024,7 @@ int Emitter::begin_left_eval_or_and(opcode opcd, int lval)
 
 	if (symbol.m_entry != entry::VAR and symbol.m_entry != entry::NUM)
 	{
-		throw CompilerException("Unknown error.", lineno);
+		throw CompilerException(interpolate("Unknown error [begin_left_eval_only]. Expected VAR or NUM got: {0}", symbol.m_entry), lineno);
 	}
 
 	auto eval_left_only = symtab_ptr->get(symtab_ptr->insert_label("leftonly"));

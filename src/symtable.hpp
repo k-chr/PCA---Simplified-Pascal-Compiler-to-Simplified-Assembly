@@ -24,6 +24,7 @@ class SymTable
 	public:
 		Symbol& check_symbol(int, bool=false);
 		std::string keyword(const token);
+		const opcode& op(std::string);
 		Symbol& get(const int);
 		void update(Symbol&);
 		int get_last_addr();

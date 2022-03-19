@@ -14,6 +14,8 @@ array		"array"
 of			"of"
 integer		"integer"
 real		"real"
+read		"read"
+write		"write"
 function	"function"
 procedure	"procedure"
 begin		"begin"
@@ -84,6 +86,12 @@ other		.
 {end}		{
 				return token::END;
 			}
+{read}		{
+				return token::READ;
+			}
+{write}		{ 
+				return token::WRITE;
+			}
 {if}		{
 				return token::IF;
 			}
@@ -118,39 +126,39 @@ other		.
 				return token::IN;
 			}
 {not}		{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::NOT);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::NOT;
 			}
 {and_then}	{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::AND_THEN);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::AND_THEN;
 			}
 {mulop}		{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::MULOP);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::MULOP;
 			}
 {sign}		{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::SIGN);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::SIGN;
 			}
 {or_else}	{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::OR_ELSE);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::OR_ELSE;
 			}
 {or}		{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::OR);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::OR;
 			}
 {and}		{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::AND);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::AND;
 			}
 {relop}		{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::RELOP);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::RELOP;
 			}
 {assign}	{
-				yylval.int_val = symtab_ptr->insert_by_token(yytext, token::ASSIGN);
+				yylval.int_val = static_cast<int>(symtab_ptr->op(yytext));
 				return token::ASSIGN;
 			}
 {id}		{

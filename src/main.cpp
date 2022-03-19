@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <iostream>
 
-int lineno = 0;
+int lineno = 1;
 std::shared_ptr<Emitter> emitter_ptr;
 std::shared_ptr<SymTable> symtab_ptr;
 

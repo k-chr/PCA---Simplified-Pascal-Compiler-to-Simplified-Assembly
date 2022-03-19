@@ -62,7 +62,7 @@ class Emitter
 		void store_param(int);
 		void store_param_on_stack(int);
 
-		void end_current_subprogram();
+		void end_current_subprogram(int);
 
 		int binary_op(int, int, int);
 		int unary_op(int, int);
@@ -120,23 +120,21 @@ class Emitter
 			auto& stream = this->get_stream();
 
   			stream << std::endl << std::setw(8) << std::left;
-
-  			const auto& print = [&stream](const std::string& item)
+			int max_mnemonics = 3;
+  			const auto& print = [&stream, &max_mnemonics](const std::string& item)
 			{
-     			stream << std::setw(12) << item << ", ";
+				if (max_mnemonics-- < 3)
+					stream << ",";
+     			stream << std::setw(12) << item ;
   			};
 
   			stream << label<< std::setw(16);
   			stream << op << std::setw(0) << std::right;
   			(print(mnemonics), ...);
 
-			if(stream.rdbuf() == std::cout.rdbuf())
+			for(auto i =0; i < max_mnemonics; ++i)
 			{
-				stream << '\b' << '\b';
-			}
-			else 
-			{
-				stream.seekp(-2, std::ios_base::end);
+				stream << std::setw(not i ? 12: 13) << "";
 			}
 
 			if(not comment.empty())

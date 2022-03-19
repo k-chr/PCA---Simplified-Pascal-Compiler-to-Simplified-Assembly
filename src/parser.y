@@ -27,6 +27,9 @@ optional_args call inc_or_dec expression_list read write simple_expression term 
 %token <int_val> PROGRAM BEGIN_TOK END VAR INTEGER REAL ARRAY OF FUN PROC IF THEN ELSE DO WHILE REPEAT
 UNTIL FOR IN TO DOWNTO WRITE READ RELOP AND_THEN MULOP SIGN ASSIGN AND OR_ELSE OR NOT ID NUM NONE DONE
 
+%nonassoc DANGLING
+%nonassoc ELSE
+
 %%
 
 program:
@@ -82,7 +85,7 @@ variable_decl:
 		{
 			auto data = emitter_ptr->get_params();
 			auto computed_type = $5;
-			std::for_each(data.crbegin(), data.crend(), [&computed_type](auto symbol_id)
+			std::for_each(data.cbegin(), data.cend(), [&computed_type](auto symbol_id)
 			{
 				symtab_ptr->update_var(symbol_id, computed_type);
 				emitter_ptr->store_param_on_stack(symbol_id);
@@ -135,7 +138,7 @@ subprogram:
 		}
 	} block
 	{
-		emitter_ptr->end_current_subprogram();
+		emitter_ptr->end_current_subprogram($1);
 	}
 	;
 
@@ -161,7 +164,7 @@ header:
 		}
 		emitter_ptr->end_parametric_expr();
 	}
-	';'
+	';' { $$ = $2;}
 	| PROC ID
 	{
 		symtab_ptr->leave_global_scope();
@@ -182,7 +185,7 @@ header:
 		}
 		emitter_ptr->end_parametric_expr();
 	}
-	';'
+	';' { $$ = $2;}
 	;
 
 block:
@@ -420,7 +423,7 @@ optional_else:
 	{
 		$$ = opt_else_helper;
 	}
-	| %empty
+	| %empty  %prec DANGLING
 	;
 
 read:
@@ -618,6 +621,9 @@ factor:
 	}
 	| NUM
 	| '(' expression ')'
+	{
+		$$ = $2;
+	}
 	| NOT factor
 	{
 		try
@@ -713,7 +719,7 @@ arg_decl:
 		{
 			auto data = emitter_ptr->get_params();
 			auto computed_type = $4;
-			std::for_each(data.crbegin(), data.crend(), [&computed_type](auto symbol_id){
+			std::for_each(data.cbegin(), data.cend(), [&computed_type](auto symbol_id){
 				symtab_ptr->update_var(symbol_id, computed_type, true);
 				emitter_ptr->store_param_on_stack(symbol_id);
 			});
@@ -731,7 +737,7 @@ arg_decl:
 		{
 			auto data = emitter_ptr->get_params();
 			auto computed_type = $3;
-			std::for_each(data.crbegin(), data.crend(), [&computed_type](auto symbol_id){
+			std::for_each(data.cbegin(), data.cend(), [&computed_type](auto symbol_id){
 				symtab_ptr->update_var(symbol_id, computed_type);
 				emitter_ptr->store_param_on_stack(symbol_id);
 			});

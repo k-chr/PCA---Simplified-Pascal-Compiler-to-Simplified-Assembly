@@ -107,7 +107,6 @@ enum class entry
 	NUM,
 	ARR,
 	RNG,
-	OP,
 	LABEL,
 	TYPE
 };
@@ -149,11 +148,6 @@ inline std::ostream& operator<<(std::ostream& out, const entry e)
 		case entry::RNG: 
 		{
 			out << "range";
-			break;
-		}
-		case entry::OP: 
-		{
-			out << "operator";
 			break;
 		}
 		case entry::LABEL: 

@@ -33,7 +33,7 @@ int Symbol::size() const
 			case dtype::REAL: size = varsize::REAL; break;
 			default: size = varsize::NONE; break;
 		};
-		
+
 		if (this->m_entry == entry::ARR)
 		{
 			int len = std::abs(this->stop_ind - this->start_ind);
@@ -49,11 +49,6 @@ std::string Symbol::addr_to_str(bool dereference, bool callable) const
 	if (this->m_entry == entry::NUM or this->m_entry == entry::LABEL or callable)
 	{
 		return "#" + this->name;
-	}
-
-	if (this->m_entry == entry::OP)
-	{
-		return stringify(static_cast<opcode> (this->address));
 	}
 
 	auto pos = std::to_string(this->address);

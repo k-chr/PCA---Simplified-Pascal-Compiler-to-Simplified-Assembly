@@ -6,24 +6,31 @@
 #include <iterator>
 
 const std::map<std::string, opcode> SymTable::relops_mulops_signops ={
-	{"*", 		opcode::MUL},
-	{"div", 	opcode::DIV},
-	{"/", 		opcode::DIV},
-	{"mod",		opcode::MOD},
-	{"+", 		opcode::ADD},
-	{"-", 		opcode::SUB},
-	{"and", 	opcode::AND},
-	{"or", 		 opcode::OR},
-	{"=", 		 opcode::EQ},
-	{"<>", 		 opcode::NE},
-	{">=", 		 opcode::GE},
-	{">", 		 opcode::GT},
-	{">", 		 opcode::GT},
-	{"<=", 		 opcode::LE},
-	{"<", 		 opcode::LT},
-	{":=",		opcode::MOV},
-	{"not",		opcode::NOT}
+	{"*", 		   opcode::MUL},
+	{"div", 	   opcode::DIV},
+	{"/", 		   opcode::DIV},
+	{"mod",		   opcode::MOD},
+	{"+", 		   opcode::ADD},
+	{"-", 		   opcode::SUB},
+	{"and", 	   opcode::AND},
+	{"and then",   opcode::AND},
+	{"or", 		    opcode::OR},
+	{"or else",	    opcode::OR},
+	{"=", 		    opcode::EQ},
+	{"<>", 		    opcode::NE},
+	{">=", 		    opcode::GE},
+	{">", 		    opcode::GT},
+	{">", 		    opcode::GT},
+	{"<=", 		    opcode::LE},
+	{"<", 		    opcode::LT},
+	{":=",		   opcode::MOV},
+	{"not",		   opcode::NOT}
 };
+
+const opcode& SymTable::op(std::string yytext)
+{
+	return this->relops_mulops_signops.at(yytext);
+}
 
 const std::map<token, std::string> SymTable::keywords = {
 	{token::PROGRAM,  "program"},
@@ -169,26 +176,6 @@ int SymTable::insert_by_token(const std::string& yytext, const token& op, const 
 
 	switch (op)
 	{
-        case token::RELOP:
-		case token::AND_THEN:
-		case token::OR_ELSE:
-        case token::MULOP:
-        case token::SIGN:
-        case token::ASSIGN:
-        case token::OR:
-		case token::AND:
-        case token::NOT:
-		{	
-			auto it =SymTable::relops_mulops_signops.find(yytext);
-			if (it == SymTable::relops_mulops_signops.cend())
-			{
-				break;
-			}
-
-			const auto opcd = SymTable::relops_mulops_signops.at(yytext);
-			return this->insert(scope::GLOBAL, yytext, entry::OP, dtype::NONE, static_cast<int>(opcd));
-		}
-
         case token::ID:
 			return this->insert(scope::UNBOUND, yytext, entry::NONE, dtype::NONE);
 
@@ -352,11 +339,29 @@ void SymTable::update_var(int id, int type_id, bool is_reference)
 void SymTable::update_addresses(std::vector<int>& args)
 {
 	std::vector<Symbol> arg_symbols;
-	std::transform(args.crbegin(), args.crend(), std::inserter(arg_symbols, arg_symbols.begin()), [this](auto sym_id){return this->get(sym_id);});
+	std::transform(args.cbegin(), args.cend(), std::inserter(arg_symbols, arg_symbols.begin()), [this](auto sym_id){return this->get(sym_id);});
+	auto curr = 0;
 
-	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this](Symbol& sym)
+	auto it = std::find_if(this->symbols.crbegin(), this->symbols.crend(), [](const Symbol& sym)
 	{
-		sym.address = this->get_last_addr();
+		return sym.m_entry == entry::FUNC or sym.m_entry == entry::PROC;
+	});
+
+	constexpr int offset = static_cast<int>(varsize::REF);
+
+	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this, &curr, &it](Symbol& sym)
+	{
+		if (sym.m_scope == scope::GLOBAL)
+		{
+			sym.address = curr;
+		}
+		else
+		{
+			sym.address = curr + it->address + offset;
+		}
+
+		curr += sym.size();
+
 		this->update(sym);
 	});
 }
@@ -432,7 +437,6 @@ int SymTable::lookup(const std::string& name)
 			s.m_entry == entry::FUNC or 
 			s.m_entry == entry::RNG or 
 			s.m_entry == entry::PROC or 
-			s.m_entry == entry::OP or 
 			s.m_entry == entry::TYPE or
 			s.m_scope == this->get_scope()
 		);
@@ -501,13 +505,13 @@ int SymTable::get_last_addr()
 
 	if (it_to_last_sized != this->symbols.crend())
 	{
-		if (it_to_last_sized->m_scope == scope::GLOBAL and it_to_last_sized->address > 0)
+		if (it_to_last_sized->m_scope == scope::GLOBAL and it_to_last_sized->address >= 0)
 		{
 			addr = it_to_last_sized->address + it_to_last_sized->size();
 		}
 		else if (it_to_last_sized->m_scope == scope::LOCAL and it_to_last_sized->address < 0)
 		{
-			addr = it_to_last_sized->address - it_to_last_sized->size();
+			addr = it_to_last_sized->address;
 		}
 	}
 
@@ -518,6 +522,31 @@ std::ostream& operator<<(std::ostream& out, const SymTable& symtab)
 {
 	out << std::endl;
 	
+	switch(symtab.current_scope)
+	{
+		case scope::GLOBAL:
+		{
+			auto program = symtab.symbols.at(0);
+			out << interpolate("SymTable for: program {0}", program.name) << std::endl;
+			break;
+		}
+		case scope::LOCAL:
+		{
+			auto it = std::find_if(symtab.symbols.crbegin(), symtab.symbols.crend(), [](const Symbol& sym)
+			{
+				return sym.m_entry == entry::FUNC or sym.m_entry == entry::PROC;
+			});
+
+			out << interpolate("SymTable for: {0} {1}", it->m_entry, it->name) << std::endl;
+			break;
+		}
+		default:
+		{
+			out << "SymTable" << std::endl;
+			break;
+		}
+	}
+
 	const auto& print_line = [&out](char fill, int width){
 		out << std::setfill(fill) << std::setw(width) << "" << std::endl << std::setfill(' ');
 	};
