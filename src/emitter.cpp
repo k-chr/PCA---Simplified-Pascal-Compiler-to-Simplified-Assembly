@@ -51,6 +51,11 @@ int Emitter::get_item(int array_id)
 
 	auto dim_ids = this->params;
 
+	if(dim_ids.empty())
+	{
+		return array_id;
+	}
+
 	std::vector<Symbol> dims;
 
 	std::transform(dim_ids.crbegin(), dim_ids.crend(), std::inserter(dims, dims.begin()), [this](auto symbol_id)
@@ -72,7 +77,7 @@ int Emitter::reduce(Symbol& array, std::vector<Symbol>& dims)
 
 	auto is_result_arr = array_type_spec.args.size() > dims.size();
 
-	auto temp_id = symtab_ptr->insert_temp(array_type_spec.m_dtype, is_result_arr);
+	auto temp_id = symtab_ptr->insert_temp(array_type_spec.m_dtype, true);
 	auto temp = symtab_ptr->get(temp_id);
 
 	if (is_result_arr)
@@ -93,15 +98,17 @@ int Emitter::reduce(Symbol& array, std::vector<Symbol>& dims)
 	std::vector<Symbol> dim_specs(array_type_spec.args.begin(), array_type_spec.args.begin() + dims.size());
 	auto multiplier_sym = symtab_ptr->get(symtab_ptr->insert_temp(dtype::INT));
 	auto temp_2 = symtab_ptr->get(symtab_ptr->insert_temp(dtype::INT));
+	auto temp_3 = symtab_ptr->get(symtab_ptr->insert_temp(dtype::INT));
 
 	this->assign(multiplier_sym, symtab_ptr->get(symtab_ptr->insert_constant("1", dtype::INT)));
 	this->assign(temp_2, symtab_ptr->get(symtab_ptr->insert_constant("0", dtype::INT)));
+	this->assign(offset, symtab_ptr->get(symtab_ptr->insert_constant("0", dtype::INT)));
 
 	if(is_result_arr)
 	{
 		for(auto dim : temp.args[0].args)
 		{
-			auto coeff = symtab_ptr->get(symtab_ptr->insert_constant(std::to_string(std::abs(dim.stop_ind - dim.start_ind)), dtype::INT));
+			auto coeff = symtab_ptr->get(symtab_ptr->insert_constant(std::to_string(std::abs(dim.stop_ind - dim.start_ind + 1)), dtype::INT));
 			this->binop(opcode::MUL, multiplier_sym, coeff, &multiplier_sym);
 		}
 	}
@@ -114,16 +121,43 @@ int Emitter::reduce(Symbol& array, std::vector<Symbol>& dims)
 			this->check_bounds(*dim_it, *spec_it);
 		}
 
-		this->binop(opcode::MUL, multiplier_sym, *dim_it, &temp_2);
+		auto coeff = symtab_ptr->get(symtab_ptr->insert_constant(std::to_string(spec_it->start_ind), dtype::INT));
+
+		this->binop(opcode::SUB, *dim_it, coeff, &temp_3);
+		this->binop(opcode::MUL, multiplier_sym, temp_3, &temp_2);
 		this->binop(opcode::ADD, temp_2, offset, &offset);
 
-		auto coeff = symtab_ptr->get(symtab_ptr->insert_constant(std::to_string(std::abs(spec_it->stop_ind - spec_it->start_ind)), dtype::INT));
-		this->binop(opcode::MUL, multiplier_sym, coeff, &multiplier_sym);
+		if(spec_it + 1 < dim_specs.crend())
+		{
+			auto coeff = symtab_ptr->get(symtab_ptr->insert_constant(std::to_string(std::abs(spec_it->stop_ind - spec_it->start_ind + 1)), dtype::INT));
+			this->binop(opcode::MUL, multiplier_sym, coeff, &multiplier_sym);
+		}
 	}
 
+	varsize sz;
+
+	switch (array.args[0].m_dtype) 
+	{
+		case dtype::INT: sz = varsize::INT; break;
+		case dtype::REAL: sz = varsize::REAL; break;
+		default: sz = varsize::NONE; break;
+	};
+
+	auto size_constant = symtab_ptr->get(symtab_ptr->insert_constant(std::to_string(static_cast<int>(sz)), dtype::INT));
+
+	this->binop(opcode::MUL, size_constant, offset, &offset);
 	this->shift_pointer(array, offset, &temp);
 
 	return temp_id;
+}
+
+void Emitter::move_pointer(Symbol& pointer, Symbol& dest)
+{
+	auto mnemonic = this->mnemonics.at(opcode::MOV);
+	auto op = mnemonic + this->get_type_str(dtype::INT);
+
+	this->emit_to_stream("\t\t", op, interpolate(";\t{0}\t&{1}, &{2}", mnemonic, pointer.name, dest.name), 
+						 pointer.addr_to_str(false), dest.addr_to_str(false));
 }
 
 int Emitter::shift_pointer(Symbol& pointer, Symbol& offset, Symbol* result)
@@ -193,7 +227,7 @@ int Emitter::variable_or_call(int symbol_id, bool is_lvalue)
 
 	if(symbol.m_entry == entry::FUNC and is_lvalue)
 	{
-		return symtab_ptr->lookup(interpolate("${0}_result", symbol.name));
+		return  this->variable_or_call(symtab_ptr->lookup(interpolate("${0}_result", symbol.name)), is_lvalue);
 	}
 	else if(symbol.m_entry == entry::FUNC)
 	{	
@@ -560,8 +594,8 @@ void Emitter::check_arrays(Symbol& arr1, Symbol& arr2)
 	{
 		auto dim1 = dims1[i];
 		auto dim2 = dims2[i];
-		int val1 = std::abs(dim1.stop_ind - dim1.start_ind);
-		int val2 = std::abs(dim2.stop_ind - dim2.start_ind);
+		int val1 = std::abs(dim1.stop_ind - dim1.start_ind + 1);
+		int val2 = std::abs(dim2.stop_ind - dim2.start_ind + 1);
 
 		if(val2 != val1)
 		{
@@ -813,11 +847,16 @@ void Emitter::read(int symbol_id)
 
 void Emitter::assign(Symbol& lval_sym, Symbol& rval_sym)
 {
+	if (rval_sym.m_entry == entry::ARR)
+	{
+		return this->move_pointer(rval_sym, lval_sym);
+	}
+
 	if (lval_sym.m_entry != entry::VAR)
 	{
 		throw CompilerException("Syntax error. Variable expected as a left side of the assignment.", lineno);
 	}
-
+	
 	if (rval_sym.m_entry != entry::VAR and rval_sym.m_entry != entry::NUM)
 	{
 		throw CompilerException("Syntax error. Variable or numeric constant expected as a right side of the assignment.", lineno);

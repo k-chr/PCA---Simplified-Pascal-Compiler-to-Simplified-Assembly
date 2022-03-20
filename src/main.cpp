@@ -7,7 +7,7 @@
 int lineno = 1;
 std::shared_ptr<Emitter> emitter_ptr;
 std::shared_ptr<SymTable> symtab_ptr;
-
+std::string backup;
 
 std::tuple<std::string, std::string> parse_args(int argc, char* argv[])
 {

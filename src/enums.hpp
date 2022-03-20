@@ -191,6 +191,7 @@ enum token
 	DOWNTO,
 	WRITE,
 	READ,
+	RANGE,
     RELOP,
 	AND_THEN,
     MULOP,
@@ -201,7 +202,9 @@ enum token
     OR,
     NOT,
     ID,
-    NUM,
+	CONST_INT,
+    CONST_REAL,
+	REAL_FRAG,
     NONE,
     DONE
 };

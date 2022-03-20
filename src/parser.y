@@ -21,11 +21,11 @@
 
 %type <int_val> program header program_args variable_decl subprogram_decl block eof identifiers type
 subprogram arguments statements statement_list statement args_decl arg_decl primitives array_decl range 
-dims variable expression mulop addop dim_exprs comma_expr optional_else
-optional_args call inc_or_dec expression_list read write simple_expression term factor
+dims variables variable expression mulop addop dim_exprs comma_expr optional_else optional_prog_args
+optional_args call inc_or_dec expression_list read write simple_expression term factor num
 
 %token <int_val> PROGRAM BEGIN_TOK END VAR INTEGER REAL ARRAY OF FUN PROC IF THEN ELSE DO WHILE REPEAT
-UNTIL FOR IN TO DOWNTO WRITE READ RELOP AND_THEN MULOP SIGN ASSIGN AND OR_ELSE OR NOT ID NUM NONE DONE
+UNTIL FOR IN TO DOWNTO WRITE READ RANGE RELOP AND_THEN MULOP SIGN ASSIGN AND OR_ELSE OR NOT ID CONST_INT CONST_REAL REAL_FRAG NONE DONE
 
 %nonassoc DANGLING
 %nonassoc ELSE
@@ -33,7 +33,7 @@ UNTIL FOR IN TO DOWNTO WRITE READ RELOP AND_THEN MULOP SIGN ASSIGN AND OR_ELSE O
 %%
 
 program:
-	PROGRAM ID '(' program_args ')' ';' 
+	PROGRAM ID  optional_prog_args  ';' 
 	{
 		emitter_ptr->begin_parametric_expr();
 		emitter_ptr->begin_parametric_expr();
@@ -71,6 +71,42 @@ program:
 	block
 	'.'
 	eof
+	;
+
+optional_prog_args:
+	'(' program_args ')'
+	| %empty
+	;
+
+variables:
+	variable
+	{
+		try
+		{
+			auto res = emitter_ptr->variable_or_call($1, true);
+			emitter_ptr->end_parametric_expr();
+			emitter_ptr->store_param(res);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+			YYABORT;
+		}
+	}
+	| variables ',' variable
+	{
+		try
+		{
+			auto res = emitter_ptr->variable_or_call($3, true);
+			emitter_ptr->end_parametric_expr();
+			emitter_ptr->store_param(res);
+		}
+		catch(const std::exception& exc)
+		{
+			yyerror(exc);
+			YYABORT;
+		}
+	}
 	;
 
 program_args:
@@ -432,7 +468,7 @@ read:
 	READ '(' 
 	{
 		emitter_ptr->begin_parametric_expr();
-	} identifiers ')'
+	} variables ')'
 	{
 		try
 		{
@@ -627,10 +663,7 @@ factor:
 		}
 		emitter_ptr->end_parametric_expr();
 	}
-	| NUM
-	{
-		$$ = $1;
-	}
+	| num
 	| '(' expression ')'
 	{
 		$$ = $2;
@@ -785,11 +818,11 @@ dims:
 	;
 
 range:
-	NUM '.' '.' NUM
+	CONST_INT RANGE CONST_INT
 	{
 		try
 		{
-			$$ = symtab_ptr->insert_range($1, $4);
+			$$ = symtab_ptr->insert_range($1, $3);
 		}
 		catch(const std::exception& exc)
 		{
@@ -823,6 +856,15 @@ type:
 		}
 
 		emitter_ptr->end_parametric_expr();
+	}
+	;
+
+num:
+	CONST_INT
+	| CONST_REAL
+	| REAL_FRAG CONST_REAL 
+	{
+		$$ = $2;
 	}
 	;
 

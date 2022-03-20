@@ -179,7 +179,8 @@ int SymTable::insert_by_token(const std::string& yytext, const token& op, const 
         case token::ID:
 			return this->insert(scope::UNBOUND, yytext, entry::NONE, dtype::NONE);
 
-        case token::NUM:
+        case token::CONST_INT:
+        case token::CONST_REAL:
 			return this->insert_constant(yytext, dtype);
 
 		default: break;
@@ -228,16 +229,17 @@ int SymTable::insert_range(int start, int end)
 
 int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
 {
-	std::stringstream ss("array [");
+	std::stringstream ss;
+	ss << "array [";
 	int sum = 0;
-	std::for_each(symbols.cbegin(), symbols.cend(), [&ss, &sum](const auto& symbol)
+	std::for_each(symbols_vec.cbegin(), symbols_vec.cend(), [&ss, &sum](const auto& symbol)
 	{
 		ss << symbol.start_ind;
 		ss << "..";
 		ss << symbol.stop_ind;
 		ss << ", ";
 
-		sum += std::abs(symbol.stop_ind-symbol.start_ind);
+		sum += std::abs(symbol.stop_ind - symbol.start_ind + 1);
 	});
 
 	ss.seekp(-2, std::ios_base::cur);
@@ -258,8 +260,8 @@ int SymTable::insert_array_type(std::vector<Symbol>& symbols_vec, dtype& type)
 
 	symbol.args = symbols_vec;
 	symbol.start_ind = 0;
-	symbol.stop_ind = sum; 
-
+	symbol.stop_ind = sum - 1; 
+	this->update(symbol);
 	return symbol.symtab_id + static_cast<int>(dtype::OBJECT);
 }
 
@@ -336,7 +338,7 @@ void SymTable::update_var(int id, int type_id, bool is_reference)
 	this->update(symbol);
 }
 
-void SymTable::update_addresses(std::vector<int>& args)
+void SymTable::update_addresses_callable(std::vector<int> & args)
 {
 	std::vector<Symbol> arg_symbols;
 	std::transform(args.cbegin(), args.cend(), std::inserter(arg_symbols, arg_symbols.begin()), [this](auto sym_id){return this->get(sym_id);});
@@ -351,16 +353,31 @@ void SymTable::update_addresses(std::vector<int>& args)
 
 	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this, &curr, &it](Symbol& sym)
 	{
+		sym.address = curr + it->address + offset;
+		curr += sym.size();
+		this->update(sym);
+	});
+}
+
+void SymTable::update_addresses(std::vector<int>& args)
+{
+	std::vector<Symbol> arg_symbols;
+	std::transform(args.cbegin(), args.cend(), std::inserter(arg_symbols, arg_symbols.begin()), [this](auto sym_id){return this->get(sym_id);});
+	
+	auto curr = 0;	
+
+	std::for_each(arg_symbols.begin(), arg_symbols.end(), [this, &curr](Symbol& sym)
+	{
 		if (sym.m_scope == scope::GLOBAL)
 		{
 			sym.address = curr;
+			curr += sym.size();
 		}
 		else
 		{
-			sym.address = curr + it->address + offset;
+			sym.address = curr - sym.size();
+			curr -= sym.size();
 		}
-
-		curr += sym.size();
 
 		this->update(sym);
 	});
@@ -425,7 +442,7 @@ void SymTable::update_proc_or_fun(int id, entry entry_type, std::vector<int>& ar
 		this->update(obj);
 	});
 
-	this->update_addresses(args);
+	this->update_addresses_callable(args);
 	this->update(symbol);
 }
 

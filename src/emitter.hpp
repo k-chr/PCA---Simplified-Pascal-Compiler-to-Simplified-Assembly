@@ -36,6 +36,7 @@ class Emitter
 		int relop(opcode, Symbol&, Symbol&, Symbol* result = nullptr);
 		int andorop(opcode, Symbol&, Symbol&, Symbol* result = nullptr);
 		int shift_pointer(Symbol&, Symbol&, Symbol* result = nullptr);
+		void move_pointer(Symbol&, Symbol&);
 		int begin_left_eval_or_and(opcode, int);
 		int left_eval_and_or(int, int, bool or_op=false);
 		void read(int);

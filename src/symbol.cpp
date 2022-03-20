@@ -36,7 +36,7 @@ int Symbol::size() const
 
 		if (this->m_entry == entry::ARR)
 		{
-			int len = std::abs(this->stop_ind - this->start_ind);
+			int len = std::abs(this->stop_ind - this->start_ind + 1);
 			elems *= len;
 		}
 	}
@@ -60,7 +60,7 @@ std::string Symbol::addr_to_str(bool dereference, bool callable) const
 		addr_op = "*";	
 	}
 
-	else if (not this->is_reference and this->m_entry == entry::VAR and not dereference) 
+	else if (not this->is_reference and not dereference) 
 	{
 		addr_op = "#";
 	}
