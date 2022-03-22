@@ -742,7 +742,7 @@ int Emitter::left_eval_and_or(int lval_label, int rval, bool or_op)
 	auto one = symtab_ptr->get(symtab_ptr->insert_constant("1", dtype::INT));
 
 	auto relop_result = symtab_ptr->get(this->relop(op_symbol, zero, symbol));
-	auto rest_of_code = symtab_ptr->get(symtab_ptr->insert_label(interpolate("{0}result", eval_op_symbol)));
+	auto rest_of_code = symtab_ptr->get(symtab_ptr->insert_label(interpolate("{0}result", this->mnemonics.at(eval_op_symbol))));
 
 	auto r_enabler = or_op ? zero : one;
 	auto r_disabler = or_op ? one : zero;
@@ -909,7 +909,7 @@ int Emitter::relop(opcode op_code, Symbol& first, Symbol& second, Symbol* result
 		)
 	)) throw CompilerException(interpolate("Unknown error [relop]. Expected (NUM|VAR, NUM|VAR), got: ({0}, {1})", first.m_entry, second.m_entry), lineno);
 
-	auto op_type = symtab_ptr->infer_type(first, second);
+	auto op_type = dtype::INT;
 	auto type = dtype::INT;
 	auto temp = result == nullptr ? symtab_ptr->get(symtab_ptr->insert_temp(type)) : *result;
 	auto mnemonic = this->mnemonics.at(op_code);
