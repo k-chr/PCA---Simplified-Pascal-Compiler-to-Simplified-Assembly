@@ -58,7 +58,7 @@ int Emitter::get_item(int array_id)
 
 	std::vector<Symbol> dims;
 
-	std::transform(dim_ids.crbegin(), dim_ids.crend(), std::inserter(dims, dims.begin()), [this](auto symbol_id)
+	std::transform(dim_ids.cbegin(), dim_ids.cend(), std::inserter(dims, dims.begin()), [this](auto symbol_id)
 	{
 		return symtab_ptr->get(symbol_id);
 	});
@@ -84,7 +84,7 @@ int Emitter::reduce(Symbol& array, std::vector<Symbol>& dims)
 	{
 		std::vector<Symbol> new_dims;
 		new_dims.insert(new_dims.cbegin(), array_type_spec.args.crbegin(), array_type_spec.args.crend() - dims.size());
-		auto temp_type = symtab_ptr->get(symtab_ptr->insert_array_type(new_dims, array_type_spec.m_dtype));
+		auto temp_type = symtab_ptr->get(symtab_ptr->insert_array_type(new_dims, array_type_spec.m_dtype) - static_cast<int>(dtype::OBJECT));
 		temp.m_entry = entry::ARR;
 		
 		temp.args = {temp_type};
@@ -153,6 +153,12 @@ int Emitter::reduce(Symbol& array, std::vector<Symbol>& dims)
 
 void Emitter::move_pointer(Symbol& pointer, Symbol& dest)
 {
+
+	if (dest.m_entry == entry::VAR and dest.m_dtype != dtype::INT)
+	{
+		throw CompilerException(interpolate("Variable is expected to be integer, got {0}", dest.m_dtype), lineno);
+	}
+
 	auto mnemonic = this->mnemonics.at(opcode::MOV);
 	auto op = mnemonic + this->get_type_str(dtype::INT);
 
@@ -742,7 +748,7 @@ int Emitter::left_eval_and_or(int lval_label, int rval, bool or_op)
 	auto one = symtab_ptr->get(symtab_ptr->insert_constant("1", dtype::INT));
 
 	auto relop_result = symtab_ptr->get(this->relop(op_symbol, zero, symbol));
-	auto rest_of_code = symtab_ptr->get(symtab_ptr->insert_label(interpolate("{0}result", eval_op_symbol)));
+	auto rest_of_code = symtab_ptr->get(symtab_ptr->insert_label(interpolate("{0}result", this->mnemonics.at(eval_op_symbol))));
 
 	auto r_enabler = or_op ? zero : one;
 	auto r_disabler = or_op ? one : zero;
@@ -847,19 +853,25 @@ void Emitter::read(int symbol_id)
 
 void Emitter::assign(Symbol& lval_sym, Symbol& rval_sym)
 {
-	if (rval_sym.m_entry == entry::ARR)
+	if (rval_sym.m_entry == entry::ARR and lval_sym.m_entry == entry::VAR)
 	{
 		return this->move_pointer(rval_sym, lval_sym);
 	}
 
-	if (lval_sym.m_entry != entry::VAR)
+	if (lval_sym.m_entry != entry::VAR and lval_sym.m_entry != entry::ARR)
 	{
-		throw CompilerException("Syntax error. Variable expected as a left side of the assignment.", lineno);
+		throw CompilerException("Syntax error. Variable or array expected as a left side of the assignment.", lineno);
 	}
 	
-	if (rval_sym.m_entry != entry::VAR and rval_sym.m_entry != entry::NUM)
+	if (rval_sym.m_entry != entry::VAR and rval_sym.m_entry != entry::ARR and rval_sym.m_entry != entry::NUM)
 	{
-		throw CompilerException("Syntax error. Variable or numeric constant expected as a right side of the assignment.", lineno);
+		throw CompilerException("Syntax error. Variable, array or numeric constant expected as a right side of the assignment.", lineno);
+	}
+
+	if(rval_sym.m_entry == entry::ARR and lval_sym.m_entry == entry::ARR)
+	{
+		this->check_arrays(rval_sym, lval_sym);
+		return this->move_pointer(rval_sym, lval_sym);
 	}
 
 	if (lval_sym.m_dtype != rval_sym.m_dtype)
@@ -909,7 +921,7 @@ int Emitter::relop(opcode op_code, Symbol& first, Symbol& second, Symbol* result
 		)
 	)) throw CompilerException(interpolate("Unknown error [relop]. Expected (NUM|VAR, NUM|VAR), got: ({0}, {1})", first.m_entry, second.m_entry), lineno);
 
-	auto op_type = symtab_ptr->infer_type(first, second);
+	auto op_type = dtype::INT;
 	auto type = dtype::INT;
 	auto temp = result == nullptr ? symtab_ptr->get(symtab_ptr->insert_temp(type)) : *result;
 	auto mnemonic = this->mnemonics.at(op_code);
