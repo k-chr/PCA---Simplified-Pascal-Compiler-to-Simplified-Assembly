@@ -269,7 +269,7 @@ int SymTable::insert_array_type(std::vector<int> dims, dtype& type)
 {
 	std::vector<Symbol> symbols_vec;
 
-	std::transform(dims.crbegin(), dims.crend(), std::inserter(symbols_vec, symbols_vec.begin()), [this](int id)
+	std::transform(dims.cbegin(), dims.cend(), std::inserter(symbols_vec, symbols_vec.begin()), [this](int id)
 	{
 		return this->get(id);
 	});
